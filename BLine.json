@@ -1,0 +1,21 @@
+{
+    "fileName": "BLine.json",
+    "name": "BLine-Lib",
+    "version": "0.1.1.1",
+    "frcYear": "2025",
+    "uuid": "a8e7c5d3-9f41-4b2e-8c6a-1d3f5e7b9a0c",
+    "mavenUrls": [
+        "https://jitpack.io"
+    ],
+    "jsonUrl": "https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine.json",
+    "javaDependencies": [
+        {
+            "groupId": "com.github.EtherexStudios",
+            "artifactId": "BLine-Lib",
+            "version": "0.1.1.1"
+        }
+    ],
+    "jniDependencies": [],
+    "cppDependencies": []
+}
+
