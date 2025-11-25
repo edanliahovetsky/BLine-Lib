@@ -30,7 +30,7 @@ Add the dependency:
 
 ```gradle
 dependencies {
-    implementation 'com.github.EtherexStudios:BLine-Lib:v0.1.1.1'
+    implementation 'com.github.EtherexStudios:BLine-Lib:v0.1.1.2'
 }
 ```
 
