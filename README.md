@@ -13,7 +13,7 @@ A path following library for FRC robots.
 5. Paste this URL:
 
 ```
-https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine.json
+https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine-Lib.json
 ```
 
 ### Using Gradle (Alternative)

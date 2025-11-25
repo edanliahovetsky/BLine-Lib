@@ -1,5 +1,5 @@
 {
-    "fileName": "BLine.json",
+    "fileName": "BLine-Lib.json",
     "name": "BLine-Lib",
     "version": "0.1.1.1",
     "frcYear": "2025",
@@ -7,7 +7,7 @@
     "mavenUrls": [
         "https://jitpack.io"
     ],
-    "jsonUrl": "https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine.json",
+    "jsonUrl": "https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine-Lib.json",
     "javaDependencies": [
         {
             "groupId": "com.github.EtherexStudios",
