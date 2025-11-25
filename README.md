@@ -4,7 +4,19 @@ A path following library for FRC robots.
 
 ## Installation
 
-### Using JitPack (Recommended for FRC)
+### Using Vendor JSON (Recommended)
+
+1. Open VS Code with your FRC project
+2. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
+3. Type **"WPILib: Manage Vendor Libraries"**
+4. Select **"Install new libraries (online)"**
+5. Paste this URL:
+
+```
+https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine.json
+```
+
+### Using Gradle (Alternative)
 
 Add JitPack repository to your `build.gradle`:
 
@@ -18,18 +30,8 @@ Add the dependency:
 
 ```gradle
 dependencies {
-    implementation 'com.github.YOUR_GITHUB_USERNAME:BLine-Lib:VERSION'
+    implementation 'com.github.EtherexStudios:BLine-Lib:v0.1.1.1'
 }
-```
-
-Replace `YOUR_GITHUB_USERNAME` with your actual GitHub username and `VERSION` with a release tag (e.g., `v1.0.0`), commit hash, or `main-SNAPSHOT` for the latest main branch.
-
-### Using Vendor JSON (FRC Standard Method)
-
-You can also install this as a vendor library. Add the following URL to your VSCode "WPILib: Manage Vendor Libraries" → "Install new library (online)":
-
-```
-https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/BLine-Lib/main/BLine.json
 ```
 
 ## Quick Start
