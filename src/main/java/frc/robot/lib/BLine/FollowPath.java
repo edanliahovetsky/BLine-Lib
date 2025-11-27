@@ -41,48 +41,9 @@ public class FollowPath extends Command {
         poseLoggingConsumer.accept(new Pair<>(key, value));
     }
 
-    private static PIDController translationController = null;
-    private static PIDController rotationController = null;
-    private static PIDController crossTrackController = null;
-
-    public static PIDController getTranslationController() {
-        if (translationController == null) {
-            throw new IllegalStateException("Translation controller has not been set");
-        }
-        return createPIDControllerCopy(translationController);
-    }
-    public static PIDController getRotationController() {
-        if (rotationController == null) {
-            throw new IllegalStateException("Rotation controller has not been set");
-        }
-        return createPIDControllerCopy(rotationController);
-    }
-    public static void setTranslationController(PIDController translationController) {
-        if (translationController == null) {
-            throw new IllegalArgumentException("Translation controller must not be null");
-        }
-        FollowPath.translationController = createPIDControllerCopy(translationController);
-    }
-    public static void setRotationController(PIDController rotationController) {
-        if (rotationController == null) {
-            throw new IllegalArgumentException("Rotation controller must not be null");
-        }
-        FollowPath.rotationController = createPIDControllerCopy(rotationController);
-    }
-
-    public static void setCrossTrackController(PIDController crossTrackController) {
-        if (crossTrackController == null) {
-            throw new IllegalArgumentException("Cross track controller must not be null");
-        }
-        FollowPath.crossTrackController = createPIDControllerCopy(crossTrackController);
-    }
-
-    public static PIDController getCrossTrackController() {
-        if (crossTrackController == null) {
-            throw new IllegalStateException("Cross track controller has not been set");
-        }
-        return createPIDControllerCopy(crossTrackController);
-    }
+    private final PIDController translationController;
+    private final PIDController rotationController;
+    private final PIDController crossTrackController;
 
     private static PIDController createPIDControllerCopy(PIDController source) {
         if (source == null) {
@@ -143,7 +104,76 @@ public class FollowPath extends Command {
     private ArrayList<Translation2d> robotTranslations = new ArrayList<>();
     private double cachedRemainingDistance = 0.0;
 
-    public FollowPath(
+    public static class Builder {
+        private final SubsystemBase driveSubsystem;
+        private final Supplier<Pose2d> poseSupplier;
+        private final Supplier<ChassisSpeeds> robotRelativeSpeedsSupplier;
+        private final Consumer<ChassisSpeeds> robotRelativeSpeedsConsumer;
+        private final PIDController translationController;
+        private final PIDController rotationController;
+        private final PIDController crossTrackController;
+        
+        private Supplier<Boolean> shouldFlipPathSupplier = () -> false;
+        private Consumer<Pose2d> poseResetConsumer = (pose) -> {};
+        
+        public Builder(
+            SubsystemBase driveSubsystem, 
+            Supplier<Pose2d> poseSupplier,
+            Supplier<ChassisSpeeds> robotRelativeSpeedsSupplier,
+            Consumer<ChassisSpeeds> robotRelativeSpeedsConsumer,
+            PIDController translationController,
+            PIDController rotationController,
+            PIDController crossTrackController
+        ) {
+            this.driveSubsystem = driveSubsystem;
+            this.poseSupplier = poseSupplier;
+            this.robotRelativeSpeedsSupplier = robotRelativeSpeedsSupplier;
+            this.robotRelativeSpeedsConsumer = robotRelativeSpeedsConsumer;
+            this.translationController = translationController;
+            this.rotationController = rotationController;
+            this.crossTrackController = crossTrackController;
+        }
+
+        public Builder withShouldFlip(Supplier<Boolean> shouldFlipPathSupplier) {
+            this.shouldFlipPathSupplier = shouldFlipPathSupplier;
+            return this;
+        }
+
+        public Builder withDefaultShouldFlip() {
+            this.shouldFlipPathSupplier = FollowPath::shouldFlipPath;
+            return this;
+        }
+
+        public Builder withPoseReset(Consumer<Pose2d> poseResetConsumer) {
+            this.poseResetConsumer = poseResetConsumer;
+            return this;
+        }
+
+        public FollowPath build(Path path) {
+            return new FollowPath(
+                path,
+                driveSubsystem,
+                poseSupplier,
+                robotRelativeSpeedsSupplier,
+                robotRelativeSpeedsConsumer,
+                shouldFlipPathSupplier,
+                poseResetConsumer,
+                translationController,
+                rotationController,
+                crossTrackController
+            );
+        }
+    }
+
+    private static boolean shouldFlipPath() {
+        var alliance = edu.wpi.first.wpilibj.DriverStation.getAlliance();
+        if (alliance.isPresent()) {
+            return alliance.get() == edu.wpi.first.wpilibj.DriverStation.Alliance.Red;
+        }
+        return false;
+    }
+
+    private FollowPath(
         Path path, 
         SubsystemBase driveSubsystem, 
         Supplier<Pose2d> poseSupplier, 
@@ -155,8 +185,8 @@ public class FollowPath extends Command {
         PIDController rotationController,
         PIDController crossTrackController
     ) {
-        if (translationController == null || rotationController == null) {
-            throw new IllegalArgumentException("Translation and rotation controllers must be provided and must not be null or must be set before calling FollowPath");
+        if (translationController == null || rotationController == null || crossTrackController == null) {
+            throw new IllegalArgumentException("Controllers must be provided and must not be null");
         }
 
         this.path = path.copy();
@@ -165,24 +195,13 @@ public class FollowPath extends Command {
         this.robotRelativeSpeedsConsumer = robotRelativeSpeedsConsumer;
         this.shouldFlipPathSupplier = shouldFlipPathSupplier;
         this.poseResetConsumer = poseResetConsumer;
-        setTranslationController(translationController);
-        setRotationController(rotationController);
-        setCrossTrackController(crossTrackController);
+        this.translationController = translationController;
+        this.rotationController = rotationController;
+        this.crossTrackController = crossTrackController;
+        
         configureControllers();
         
         addRequirements(driveSubsystem);
-    }
-
-    public FollowPath(
-        Path path, 
-        SubsystemBase driveSubsystem, 
-        Supplier<Pose2d> poseSupplier, 
-        Consumer<Pose2d> poseResetConsumer,
-        Supplier<Boolean> shouldFlipPathSupplier,
-        Supplier<ChassisSpeeds> robotRelativeSpeedsSupplier,
-        Consumer<ChassisSpeeds> robotRelativeSpeedsConsumer
-    ) {
-        this(path, driveSubsystem, poseSupplier, robotRelativeSpeedsSupplier, robotRelativeSpeedsConsumer, shouldFlipPathSupplier, poseResetConsumer, translationController, rotationController, crossTrackController);
     }
 
 

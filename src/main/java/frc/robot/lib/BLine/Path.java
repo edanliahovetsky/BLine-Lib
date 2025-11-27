@@ -71,6 +71,26 @@ public class Path {
                 new RotationTarget(rotation, 1.0, profiledRotation)
             );
         }
+
+        public Waypoint(Pose2d pose) {
+            this(pose.getTranslation(), pose.getRotation());
+        }
+
+        public Waypoint(Pose2d pose, double handoffRadius) {
+            this(pose.getTranslation(), handoffRadius, pose.getRotation());
+        }
+
+        public Waypoint(Pose2d pose, boolean profiledRotation) {
+            this(pose.getTranslation(), pose.getRotation(), profiledRotation);
+        }
+
+        public Waypoint(Pose2d pose, double handoffRadius, boolean profiledRotation) {
+            this(pose.getTranslation(), handoffRadius, pose.getRotation(), profiledRotation);
+        }
+
+        public Waypoint(double x, double y, Rotation2d rot) {
+            this(new Translation2d(x, y), rot);
+        }
     }
 
     public static record TranslationTarget(
@@ -102,7 +122,6 @@ public class Path {
         }
     }
 
-    // New constraint model to mirror the provided Python structure
     public static record RangedConstraint(
         double value,
         int startOrdinal,
@@ -167,6 +186,46 @@ public class Path {
 
         public PathConstraints() {}
 
+        // Fluent setters for single global values
+        public PathConstraints setMaxVelocityMetersPerSec(double value) {
+            ArrayList<RangedConstraint> list = new ArrayList<>();
+            list.add(new RangedConstraint(value, 0, Integer.MAX_VALUE));
+            this.maxVelocityMetersPerSec = Optional.of(list);
+            return this;
+        }
+
+        public PathConstraints setMaxAccelerationMetersPerSec2(double value) {
+            ArrayList<RangedConstraint> list = new ArrayList<>();
+            list.add(new RangedConstraint(value, 0, Integer.MAX_VALUE));
+            this.maxAccelerationMetersPerSec2 = Optional.of(list);
+            return this;
+        }
+
+        public PathConstraints setMaxVelocityDegPerSec(double value) {
+            ArrayList<RangedConstraint> list = new ArrayList<>();
+            list.add(new RangedConstraint(value, 0, Integer.MAX_VALUE));
+            this.maxVelocityDegPerSec = Optional.of(list);
+            return this;
+        }
+
+        public PathConstraints setMaxAccelerationDegPerSec2(double value) {
+            ArrayList<RangedConstraint> list = new ArrayList<>();
+            list.add(new RangedConstraint(value, 0, Integer.MAX_VALUE));
+            this.maxAccelerationDegPerSec2 = Optional.of(list);
+            return this;
+        }
+
+        public PathConstraints setEndTranslationToleranceMeters(double value) {
+            this.endTranslationToleranceMeters = Optional.of(value);
+            return this;
+        }
+
+        public PathConstraints setEndRotationToleranceDeg(double value) {
+            this.endRotationToleranceDeg = Optional.of(value);
+            return this;
+        }
+
+        // Existing getters and setters (kept for compatibility, but consider making setters fluent too if desired)
         public Optional<ArrayList<RangedConstraint>> getMaxVelocityMetersPerSec() { return maxVelocityMetersPerSec.map(list -> new ArrayList<>(list)); }
         public void setMaxVelocityMetersPerSec(Optional<ArrayList<RangedConstraint>> v) { this.maxVelocityMetersPerSec = v.map(list -> new ArrayList<>(list)); }
 
@@ -232,6 +291,10 @@ public class Path {
 
     public Path(PathElement... pathElements) {
         this(List.of(pathElements), null, Path.defaultGlobalConstraints);
+    }
+
+    public Path(PathConstraints constraints, PathElement... pathElements) {
+        this(List.of(pathElements), constraints, Path.defaultGlobalConstraints);
     }
 
     public Path(PathElement[] pathElements, PathConstraints constraints, DefaultGlobalConstraints defaultGlobalConstraints) {
