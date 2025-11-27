@@ -195,17 +195,25 @@ public class JsonUtils {
         Path.PathConstraints constraints = new Path.PathConstraints();
         JSONObject constraintsJson = (JSONObject) json.get("constraints");
         if (constraintsJson != null) {
-            parseConstraint(constraintsJson, "max_velocity_meters_per_sec", constraints::setMaxVelocityMetersPerSec);
-            parseConstraint(constraintsJson, "max_acceleration_meters_per_sec2", constraints::setMaxAccelerationMetersPerSec2);
-            parseConstraint(constraintsJson, "max_velocity_deg_per_sec", constraints::setMaxVelocityDegPerSec);
-            parseConstraint(constraintsJson, "max_acceleration_deg_per_sec2", constraints::setMaxAccelerationDegPerSec2);
+            parseConstraint(constraintsJson, "max_velocity_meters_per_sec", (val) -> {
+                if (val.isPresent()) constraints.setMaxVelocityMetersPerSec(val.get().toArray(new Path.RangedConstraint[0]));
+            });
+            parseConstraint(constraintsJson, "max_acceleration_meters_per_sec2", (val) -> {
+                if (val.isPresent()) constraints.setMaxAccelerationMetersPerSec2(val.get().toArray(new Path.RangedConstraint[0]));
+            });
+            parseConstraint(constraintsJson, "max_velocity_deg_per_sec", (val) -> {
+                if (val.isPresent()) constraints.setMaxVelocityDegPerSec(val.get().toArray(new Path.RangedConstraint[0]));
+            });
+            parseConstraint(constraintsJson, "max_acceleration_deg_per_sec2", (val) -> {
+                if (val.isPresent()) constraints.setMaxAccelerationDegPerSec2(val.get().toArray(new Path.RangedConstraint[0]));
+            });
             Object endTranslationTolObj = constraintsJson.get("end_translation_tolerance_meters");
             if (endTranslationTolObj instanceof Number) {
-                constraints.setEndTranslationToleranceMeters(Optional.of(((Number) endTranslationTolObj).doubleValue()));
+                constraints.setEndTranslationToleranceMeters(((Number) endTranslationTolObj).doubleValue());
             }
             Object endRotationTolObj = constraintsJson.get("end_rotation_tolerance_deg");
             if (endRotationTolObj instanceof Number) {
-                constraints.setEndRotationToleranceDeg(Optional.of(((Number) endRotationTolObj).doubleValue()));
+                constraints.setEndRotationToleranceDeg(((Number) endRotationTolObj).doubleValue());
             }
         }
         return constraints;
