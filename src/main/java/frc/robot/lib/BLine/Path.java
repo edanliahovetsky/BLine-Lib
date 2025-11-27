@@ -253,33 +253,27 @@ public class Path {
             return this;
         }
 
-        // Existing getters and setters (kept for compatibility, but consider making setters fluent too if desired)
+        // Getters and setters
         public Optional<ArrayList<RangedConstraint>> getMaxVelocityMetersPerSec() { return maxVelocityMetersPerSec.map(list -> new ArrayList<>(list)); }
-        public PathConstraints setMaxVelocityMetersPerSec(Optional<ArrayList<RangedConstraint>> v) { this.maxVelocityMetersPerSec = v.map(list -> new ArrayList<>(list)); return this; }
-
+        
         public Optional<ArrayList<RangedConstraint>> getMaxAccelerationMetersPerSec2() { return maxAccelerationMetersPerSec2.map(list -> new ArrayList<>(list)); }
-        public PathConstraints setMaxAccelerationMetersPerSec2(Optional<ArrayList<RangedConstraint>> v) { this.maxAccelerationMetersPerSec2 = v.map(list -> new ArrayList<>(list)); return this; }
-
+        
         public Optional<ArrayList<RangedConstraint>> getMaxVelocityDegPerSec() { return maxVelocityDegPerSec.map(list -> new ArrayList<>(list)); }
-        public PathConstraints setMaxVelocityDegPerSec(Optional<ArrayList<RangedConstraint>> v) { this.maxVelocityDegPerSec = v.map(list -> new ArrayList<>(list)); return this; }
-
+        
         public Optional<ArrayList<RangedConstraint>> getMaxAccelerationDegPerSec2() { return maxAccelerationDegPerSec2.map(list -> new ArrayList<>(list)); }
-        public PathConstraints setMaxAccelerationDegPerSec2(Optional<ArrayList<RangedConstraint>> v) { this.maxAccelerationDegPerSec2 = v.map(list -> new ArrayList<>(list)); return this; }
-
+        
         public Optional<Double> getEndTranslationToleranceMeters() { return endTranslationToleranceMeters; }
-        public PathConstraints setEndTranslationToleranceMeters(Optional<Double> v) { this.endTranslationToleranceMeters = v; return this; }
-
+        
         public Optional<Double> getEndRotationToleranceDeg() { return endRotationToleranceDeg; }
-        public PathConstraints setEndRotationToleranceDeg(Optional<Double> v) { this.endRotationToleranceDeg = v; return this; }
 
         public PathConstraints copy() {
             PathConstraints c = new PathConstraints();
-            c.setMaxVelocityMetersPerSec(getMaxVelocityMetersPerSec());
-            c.setMaxAccelerationMetersPerSec2(getMaxAccelerationMetersPerSec2());
-            c.setMaxVelocityDegPerSec(getMaxVelocityDegPerSec());
-            c.setMaxAccelerationDegPerSec2(getMaxAccelerationDegPerSec2());
-            c.setEndTranslationToleranceMeters(getEndTranslationToleranceMeters());
-            c.setEndRotationToleranceDeg(getEndRotationToleranceDeg());
+            if (maxVelocityMetersPerSec.isPresent()) c.setMaxVelocityMetersPerSec(maxVelocityMetersPerSec.get().toArray(new RangedConstraint[0]));
+            if (maxAccelerationMetersPerSec2.isPresent()) c.setMaxAccelerationMetersPerSec2(maxAccelerationMetersPerSec2.get().toArray(new RangedConstraint[0]));
+            if (maxVelocityDegPerSec.isPresent()) c.setMaxVelocityDegPerSec(maxVelocityDegPerSec.get().toArray(new RangedConstraint[0]));
+            if (maxAccelerationDegPerSec2.isPresent()) c.setMaxAccelerationDegPerSec2(maxAccelerationDegPerSec2.get().toArray(new RangedConstraint[0]));
+            if (endTranslationToleranceMeters.isPresent()) c.setEndTranslationToleranceMeters(endTranslationToleranceMeters.get());
+            if (endRotationToleranceDeg.isPresent()) c.setEndRotationToleranceDeg(endRotationToleranceDeg.get());
             return c;
         }
     }
