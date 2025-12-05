@@ -9,6 +9,7 @@ out/
 *.ipr
 *.iws
 .vscode/
+.cursor/
 *.code-workspace
 
 # OS
@@ -21,4 +22,3 @@ Thumbs.db
 *.war
 *.ear
 hs_err_pid*
-

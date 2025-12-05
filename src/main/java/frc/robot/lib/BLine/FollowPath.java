@@ -22,6 +22,58 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * A WPILib Command that follows a {@link Path} using PID controllers for translation and rotation.
+ * 
+ * <p>This command drives the robot along a defined path by tracking translation targets sequentially
+ * while simultaneously managing rotation targets. The command uses three PID controllers:
+ * <ul>
+ *   <li><b>Translation Controller:</b> Calculates command speed by minimizing total path distance remaining</li>
+ *   <li><b>Rotation Controller:</b> Controls holonomic rotation toward the current rotation target</li>
+ *   <li><b>Cross-Track Controller:</b> Minimizes deviation from the line between waypoints</li>
+ * </ul>
+ * 
+ * <p>The path following algorithm works by:
+ * <ol>
+ *   <li>Calculating command robot speed via a PID controller minimizing total path distance remaining</li>
+ *   <li>Determining velocity direction by pointing toward the current translation target</li>
+ *   <li>Advancing to the next translation target when within the handoff radius of the current one</li>
+ *   <li>Applying cross-track correction to stay on the line between waypoints</li>
+ *   <li>Interpolating rotation based on progress between rotation targets</li>
+ *   <li>Applying rate limiting via {@link ChassisRateLimiter} to respect constraints</li>
+ * </ol>
+ * 
+ * <h2>Usage</h2>
+ * <p>Use the {@link Builder} class to construct FollowPath commands:
+ * <pre>{@code
+ * FollowPath.Builder pathBuilder = new FollowPath.Builder(
+ *     driveSubsystem,
+ *     this::getPose,
+ *     this::getRobotRelativeSpeeds,
+ *     this::driveRobotRelative,
+ *     new PIDController(5.0, 0, 0),  // translation
+ *     new PIDController(3.0, 0, 0),  // rotation
+ *     new PIDController(2.0, 0, 0)   // cross-track
+ * ).withDefaultShouldFlip()
+ *  .withPoseReset(this::resetPose);
+ * 
+ * // Then build commands for specific paths:
+ * Command followAuto = pathBuilder.build(new Path("myPath"));
+ * }</pre>
+ * 
+ * <h2>Logging</h2>
+ * <p>The command supports optional logging via consumer functions. Set up logging callbacks using:
+ * <ul>
+ *   <li>{@link #setPoseLoggingConsumer(Consumer)} - Log pose data</li>
+ *   <li>{@link #setDoubleLoggingConsumer(Consumer)} - Log numeric values</li>
+ *   <li>{@link #setBooleanLoggingConsumer(Consumer)} - Log boolean states</li>
+ *   <li>{@link #setTranslationListLoggingConsumer(Consumer)} - Log translation arrays</li>
+ * </ul>
+ * 
+ * @see Path
+ * @see Builder
+ * @see ChassisRateLimiter
+ */
 public class FollowPath extends Command {
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FollowPath.class.getName());
     private static Consumer<Pair<String, Pose2d>> poseLoggingConsumer = value -> {};
@@ -59,21 +111,52 @@ public class FollowPath extends Command {
         rotationController.enableContinuousInput(-Math.PI, Math.PI);
     }
 
+    /**
+     * Sets the consumer for logging pose data during path following.
+     * 
+     * <p>The consumer receives pairs of (key, Pose2d) for various internal poses such as
+     * closest points on path segments.
+     * 
+     * @param poseLoggingConsumer The consumer to receive pose logging data, or null to disable
+     */
     public static void setPoseLoggingConsumer(Consumer<Pair<String, Pose2d>> poseLoggingConsumer) {
         if (poseLoggingConsumer == null) { return; }
         FollowPath.poseLoggingConsumer = poseLoggingConsumer;
     }
 
+    /**
+     * Sets the consumer for logging translation arrays during path following.
+     * 
+     * <p>The consumer receives pairs of (key, Translation2d[]) for data such as path waypoints
+     * and robot position history.
+     * 
+     * @param translationListLoggingConsumer The consumer to receive translation list data, or null to disable
+     */
     public static void setTranslationListLoggingConsumer(Consumer<Pair<String, Translation2d[]>> translationListLoggingConsumer) {
         if (translationListLoggingConsumer == null) { return; }
         FollowPath.translationListLoggingConsumer = translationListLoggingConsumer;
     }
 
+    /**
+     * Sets the consumer for logging boolean values during path following.
+     * 
+     * <p>The consumer receives pairs of (key, Boolean) for state flags such as completion status.
+     * 
+     * @param booleanLoggingConsumer The consumer to receive boolean logging data, or null to disable
+     */
     public static void setBooleanLoggingConsumer(Consumer<Pair<String, Boolean>> booleanLoggingConsumer) {
         if (booleanLoggingConsumer == null) { return; }
         FollowPath.booleanLoggingConsumer = booleanLoggingConsumer;
     }
 
+    /**
+     * Sets the consumer for logging numeric values during path following.
+     * 
+     * <p>The consumer receives pairs of (key, Double) for various metrics such as remaining
+     * distance, controller outputs, and target indices.
+     * 
+     * @param doubleLoggingConsumer The consumer to receive double logging data, or null to disable
+     */
     public static void setDoubleLoggingConsumer(Consumer<Pair<String, Double>> doubleLoggingConsumer) {
         if (doubleLoggingConsumer == null) { return; }
         FollowPath.doubleLoggingConsumer = doubleLoggingConsumer;
@@ -104,6 +187,45 @@ public class FollowPath extends Command {
     private ArrayList<Translation2d> robotTranslations = new ArrayList<>();
     private double cachedRemainingDistance = 0.0;
 
+    /**
+     * Builder class for constructing {@link FollowPath} commands with a fluent API.
+     * 
+     * <p>The Builder allows you to configure a path follower once with all the robot-specific
+     * parameters, then build multiple commands for different paths. This avoids repeating
+     * the same configuration for each path.
+     * 
+     * <h2>Required Parameters</h2>
+     * <p>The constructor requires:
+     * <ul>
+     *   <li>Drive subsystem - For command requirements</li>
+     *   <li>Pose supplier - Returns current robot pose</li>
+     *   <li>Robot-relative speeds supplier - Returns current chassis speeds</li>
+     *   <li>Robot-relative speeds consumer - Accepts commanded chassis speeds</li>
+     *   <li>Three PID controllers for translation, rotation, and cross-track correction</li>
+     * </ul>
+     * 
+     * <h2>Optional Configuration</h2>
+     * <ul>
+     *   <li>{@link #withShouldFlip(Supplier)} - Custom alliance flip logic</li>
+     *   <li>{@link #withDefaultShouldFlip()} - Use DriverStation alliance for flipping</li>
+     *   <li>{@link #withPoseReset(Consumer)} - Reset odometry to path start pose</li>
+     * </ul>
+     * 
+     * <h2>Example</h2>
+     * <pre>{@code
+     * FollowPath.Builder builder = new FollowPath.Builder(
+     *     driveSubsystem,
+     *     this::getPose,
+     *     this::getSpeeds,
+     *     this::drive,
+     *     translationPID,
+     *     rotationPID,
+     *     crossTrackPID
+     * ).withDefaultShouldFlip();
+     * 
+     * Command cmd = builder.build(myPath);
+     * }</pre>
+     */
     public static class Builder {
         private final SubsystemBase driveSubsystem;
         private final Supplier<Pose2d> poseSupplier;
@@ -116,6 +238,17 @@ public class FollowPath extends Command {
         private Supplier<Boolean> shouldFlipPathSupplier = () -> false;
         private Consumer<Pose2d> poseResetConsumer = (pose) -> {};
         
+        /**
+         * Creates a new FollowPath Builder with the required configuration.
+         * 
+         * @param driveSubsystem The drive subsystem that the command will require
+         * @param poseSupplier Supplier that returns the current robot pose in field coordinates
+         * @param robotRelativeSpeedsSupplier Supplier that returns current robot-relative chassis speeds
+         * @param robotRelativeSpeedsConsumer Consumer that accepts robot-relative chassis speeds to drive
+         * @param translationController PID controller for calculating command speed by minimizing path distance remaining
+         * @param rotationController PID controller for rotating toward rotation targets
+         * @param crossTrackController PID controller for staying on the line between waypoints
+         */
         public Builder(
             SubsystemBase driveSubsystem, 
             Supplier<Pose2d> poseSupplier,
@@ -134,21 +267,58 @@ public class FollowPath extends Command {
             this.crossTrackController = crossTrackController;
         }
 
+        /**
+         * Configures a custom supplier to determine whether the path should be flipped.
+         * 
+         * <p>When the supplier returns true, the path will be flipped to the opposite alliance
+         * side using {@link FlippingUtil} during command initialization.
+         * 
+         * @param shouldFlipPathSupplier Supplier returning true if the path should be flipped
+         * @return This builder for chaining
+         */
         public Builder withShouldFlip(Supplier<Boolean> shouldFlipPathSupplier) {
             this.shouldFlipPathSupplier = shouldFlipPathSupplier;
             return this;
         }
 
+        /**
+         * Configures the builder to use the default alliance-based path flipping.
+         * 
+         * <p>When enabled, paths will automatically be flipped when the robot is on the
+         * red alliance, based on {@link edu.wpi.first.wpilibj.DriverStation#getAlliance()}.
+         * 
+         * @return This builder for chaining
+         */
         public Builder withDefaultShouldFlip() {
             this.shouldFlipPathSupplier = FollowPath::shouldFlipPath;
             return this;
         }
 
+        /**
+         * Configures a consumer to reset the robot's pose at the start of path following.
+         * 
+         * <p>When set, the command will call this consumer with the path's starting pose
+         * during initialization. This is useful for resetting odometry when starting autonomous
+         * routines or when the robot is placed at a known location.
+         * 
+         * @param poseResetConsumer Consumer that resets the robot's pose estimate
+         * @return This builder for chaining
+         */
         public Builder withPoseReset(Consumer<Pose2d> poseResetConsumer) {
             this.poseResetConsumer = poseResetConsumer;
             return this;
         }
 
+        /**
+         * Builds a FollowPath command for the specified path.
+         * 
+         * <p>The built command will use all the configuration from this builder. Each call
+         * to build() creates an independent command that can be scheduled.
+         * 
+         * @param path The path to follow
+         * @return A new FollowPath command configured for the given path
+         * @throws IllegalArgumentException if any required controllers are null
+         */
         public FollowPath build(Path path) {
             return new FollowPath(
                 path,
@@ -165,6 +335,11 @@ public class FollowPath extends Command {
         }
     }
 
+    /**
+     * Determines if the path should be flipped based on the current alliance.
+     * 
+     * @return true if on the red alliance and the path should be flipped, false otherwise
+     */
     private static boolean shouldFlipPath() {
         var alliance = edu.wpi.first.wpilibj.DriverStation.getAlliance();
         if (alliance.isPresent()) {
@@ -463,7 +638,14 @@ public class FollowPath extends Command {
 
     }
     
-    // initial test confirmed work
+    /**
+     * Calculates the total remaining path distance from the robot's current position.
+     * 
+     * <p>This is used by the translation controller to calculate command speed.
+     * Sums the distances from the current position through all remaining translation targets.
+     * 
+     * @return The remaining path distance in meters
+     */
     private double calculateRemainingPathDistance() {
         Translation2d previousTranslation = poseSupplier.get().getTranslation();
         double remainingDistance = 0;
@@ -478,6 +660,13 @@ public class FollowPath extends Command {
         return remainingDistance;
     }
 
+    /**
+     * Calculates the remaining distance to the current rotation target position.
+     * 
+     * <p>Used for interpolating rotation based on progress between rotation targets.
+     * 
+     * @return The remaining distance in meters to where the current rotation should be achieved
+     */
     private double calculateRemainingDistanceToRotationTarget() {
         Translation2d previousTranslation = poseSupplier.get().getTranslation();
         double remainingDistance = 0;
@@ -504,8 +693,14 @@ public class FollowPath extends Command {
         return remainingDistance;
     }
 
-    // total distance between the target rotation and the previous rotation target
-    // if there is no previous rotation target, return the distance between the target rotation and the start of the path
+    /**
+     * Calculates the total distance of the segment between the previous and current rotation targets.
+     * 
+     * <p>Used for interpolating rotation based on progress between rotation targets.
+     * If there is no previous rotation target, returns the distance from the path start.
+     * 
+     * @return The segment distance in meters
+     */
     private double calculateRotationTargetSegmentDistance() {
         // Find the previous rotation target (immediately before current rotation)
 
@@ -531,6 +726,14 @@ public class FollowPath extends Command {
         return distance;
     }
 
+    /**
+     * Calculates the signed cross-track error from the robot to the line between waypoints.
+     * 
+     * <p>Positive values indicate the robot is to the right of the path, negative values
+     * indicate the robot is to the left of the path.
+     * 
+     * @return The signed cross-track error in meters
+     */
     private double calculateCrossTrackError() {
         Translation2d targetTranslation = ((TranslationTarget) pathElementsWithConstraints.get(translationElementIndex).getFirst()).translation();
         Translation2d prevTranslation;
@@ -594,6 +797,14 @@ public class FollowPath extends Command {
         return signedError;
     }
 
+    /**
+     * Calculates the field position where a rotation target should be achieved.
+     * 
+     * <p>Rotation targets are interpolated between translation targets using their t_ratio.
+     * 
+     * @param index The index of the rotation target in the path elements list
+     * @return The translation where this rotation should be achieved
+     */
     private Translation2d calculateRotationTargetTranslation(int index) {
         // Validate index
         if (index < 0 || index >= pathElementsWithConstraints.size()) {
@@ -662,6 +873,11 @@ public class FollowPath extends Command {
     }
 
 
+    /**
+     * Checks if the robot hasn't yet reached the current rotation target's t_ratio position.
+     * 
+     * @return true if the robot should stay at the current rotation target, false if it should advance
+     */
     private boolean isRotationTRatioGreater() {
         if (isRotationNextSegment()) { return true; }
         if (isRotationPreviousSegment()) { return false; }
@@ -720,6 +936,11 @@ public class FollowPath extends Command {
         return shouldStayAtCurrentTarget;
     }
     
+    /**
+     * Checks if the current rotation target is on a previous path segment (already passed).
+     * 
+     * @return true if the rotation target is on a segment before the current translation segment
+     */
     private boolean isRotationPreviousSegment() {
         if (rotationElementIndex > translationElementIndex) { return false; }
         
@@ -730,6 +951,12 @@ public class FollowPath extends Command {
         }
         return false;
     }
+
+    /**
+     * Checks if the current rotation target is on a future path segment.
+     * 
+     * @return true if the rotation target is on a segment after the current translation segment
+     */
     private boolean isRotationNextSegment() {
         return rotationElementIndex > translationElementIndex;
     }

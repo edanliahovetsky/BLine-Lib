@@ -20,10 +20,58 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Optional;
 
+/**
+ * Utility class for loading and parsing path data from JSON files.
+ * 
+ * <p>This class provides methods to load {@link Path} objects from JSON files stored in the
+ * robot's deploy directory. It supports loading individual paths as well as global constraint
+ * configurations.
+ * 
+ * <h2>File Structure</h2>
+ * <p>The expected directory structure under the deploy directory is:
+ * <pre>
+ * deploy/
+ *   autos/
+ *     config.json          (global constraints configuration)
+ *     paths/
+ *       myPath.json        (individual path files)
+ *       otherPath.json
+ * </pre>
+ * 
+ * <h2>Path JSON Format</h2>
+ * <p>Path JSON files contain:
+ * <ul>
+ *   <li><b>path_elements:</b> Array of translation, rotation, and waypoint targets</li>
+ *   <li><b>constraints:</b> Optional path-specific velocity/acceleration constraints</li>
+ *   <li><b>default_global_constraints:</b> Optional override for global constraints</li>
+ * </ul>
+ * 
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ * // Load a path from the default autos directory
+ * Path path = JsonUtils.loadPath("myPath.json");
+ * 
+ * // Load a path from a custom directory
+ * Path path = JsonUtils.loadPath(new File("/custom/dir"), "myPath.json");
+ * 
+ * // Load global constraints only
+ * Path.DefaultGlobalConstraints globals = JsonUtils.loadGlobalConstraints(JsonUtils.PROJECT_ROOT);
+ * }</pre>
+ * 
+ * @see Path
+ * @see Path.DefaultGlobalConstraints
+ */
 public class JsonUtils {
     /**
-     * Container for parsed path components (without JSON parsing overhead in Path construction).
-     * Use this to separate JSON parsing from Path construction for performance measurements.
+     * Container for parsed path components without constructing a full Path object.
+     * 
+     * <p>This record is useful for separating JSON parsing from Path construction,
+     * which can be helpful for performance measurements or when you need to inspect
+     * the parsed data before creating a Path.
+     * 
+     * @param elements The list of parsed path elements
+     * @param constraints The parsed path-specific constraints
+     * @param defaultGlobalConstraints The default global constraints to use
      */
     public static record ParsedPathComponents(
         ArrayList<PathElement> elements,
@@ -31,15 +79,37 @@ public class JsonUtils {
         Path.DefaultGlobalConstraints defaultGlobalConstraints
     ) {
         /**
-         * Construct a Path from these parsed components.
-         * This avoids JSON parsing overhead.
+         * Constructs a Path from these parsed components.
+         * 
+         * <p>This method creates a new Path using the pre-parsed components,
+         * avoiding the overhead of JSON parsing.
+         * 
+         * @return A new Path constructed from the parsed components
          */
         public Path toPath() {
             return new Path(elements, constraints, defaultGlobalConstraints);
         }
     }
+
+    /**
+     * The default project root directory for auto routines.
+     * 
+     * <p>This is set to the "autos" subdirectory within the robot's deploy directory.
+     * Path files should be placed in a "paths" subdirectory within this location.
+     */
     public static final File PROJECT_ROOT = new File(Filesystem.getDeployDirectory(), "autos");
 
+    /**
+     * Loads a path from a JSON file in the specified autos directory.
+     * 
+     * <p>The path file should be located in a "paths" subdirectory within the autos directory.
+     * Global constraints are loaded from a "config.json" file in the autos directory.
+     * 
+     * @param autosDir The directory containing the autos (with paths/ subdirectory)
+     * @param pathFileName The name of the path file (including .json extension)
+     * @return The loaded Path object
+     * @throws RuntimeException if the file cannot be read or parsed
+     */
     public static Path loadPath(File autosDir, String pathFileName) {
         try {
             File pathFile = new File(new File(autosDir, "paths"), pathFileName);
@@ -62,14 +132,42 @@ public class JsonUtils {
         }
     }
 
+    /**
+     * Loads a path from a pre-parsed JSON object with specified global constraints.
+     * 
+     * @param json The parsed JSON object representing the path
+     * @param defaultGlobalConstraints The default global constraints to use
+     * @return The loaded Path object
+     */
     public static Path loadPath(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         return buildPathFromJson(json, defaultGlobalConstraints);
     }
 
+    /**
+     * Loads a path from a JSON file in the default project root directory.
+     * 
+     * <p>This is equivalent to calling {@code loadPath(PROJECT_ROOT, pathFileName)}.
+     * 
+     * @param pathFileName The name of the path file (including .json extension)
+     * @return The loaded Path object
+     * @throws RuntimeException if the file cannot be read or parsed
+     * @see #PROJECT_ROOT
+     */
     public static Path loadPath(String pathFileName) {
         return loadPath(PROJECT_ROOT, pathFileName);
     }
 
+    /**
+     * Loads a path from a JSON string with specified global constraints.
+     * 
+     * <p>This method is useful when the JSON data comes from a source other than a file,
+     * such as network communication or embedded resources.
+     * 
+     * @param pathJson The JSON string representing the path
+     * @param defaultGlobalConstraints The default global constraints to use
+     * @return The loaded Path object
+     * @throws RuntimeException if the JSON string cannot be parsed
+     */
     public static Path loadPathFromJsonString(String pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         try {
             JSONObject json = (JSONObject) new JSONParser().parse(pathJson);
@@ -80,12 +178,15 @@ public class JsonUtils {
     }
 
     /**
-     * Parse a path JSON object into components without constructing a Path.
-     * This is useful for performance measurements where you want to separate
-     * JSON parsing from Path construction.
+     * Parses a path JSON object into components without constructing a Path.
+     * 
+     * <p>This method is useful for performance measurements where you want to separate
+     * JSON parsing from Path construction, or when you need to inspect the parsed data
+     * before creating a Path.
      * 
      * @param pathJson The JSON object representing the path
-     * @param defaultGlobalConstraints Optional default global constraints (can be null)
+     * @param defaultGlobalConstraints Optional default global constraints (can be null,
+     *                                  in which case constraints will be loaded from config)
      * @return ParsedPathComponents containing elements, constraints, and globals
      */
     public static ParsedPathComponents parsePathComponents(JSONObject pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
@@ -103,6 +204,13 @@ public class JsonUtils {
         return new ParsedPathComponents(elements, constraints, globals);
     }
 
+    /**
+     * Builds a Path object from a JSON object and global constraints.
+     * 
+     * @param json The JSON object containing path data
+     * @param defaultGlobalConstraints The default global constraints to use
+     * @return The constructed Path object
+     */
     private static Path buildPathFromJson(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         ArrayList<PathElement> elements = parsePathElements(json);
 
@@ -120,6 +228,19 @@ public class JsonUtils {
         return new Path(elements, constraints, globals);
     }
 
+    /**
+     * Parses path elements from a JSON object.
+     * 
+     * <p>Supports three element types:
+     * <ul>
+     *   <li><b>translation:</b> A position target with optional handoff radius</li>
+     *   <li><b>rotation:</b> A holonomic rotation target with t_ratio and optional profiling</li>
+     *   <li><b>waypoint:</b> Combined translation and rotation target</li>
+     * </ul>
+     * 
+     * @param json The JSON object containing path_elements array
+     * @return ArrayList of parsed PathElement objects
+     */
     private static ArrayList<PathElement> parsePathElements(JSONObject json) {
         ArrayList<PathElement> elements = new ArrayList<>();
         JSONArray pathElementsJson = (JSONArray) json.get("path_elements");
@@ -191,6 +312,22 @@ public class JsonUtils {
         return elements;
     }
 
+    /**
+     * Parses path constraints from a JSON object.
+     * 
+     * <p>Constraints are optional and can include:
+     * <ul>
+     *   <li>max_velocity_meters_per_sec</li>
+     *   <li>max_acceleration_meters_per_sec2</li>
+     *   <li>max_velocity_deg_per_sec</li>
+     *   <li>max_acceleration_deg_per_sec2</li>
+     *   <li>end_translation_tolerance_meters</li>
+     *   <li>end_rotation_tolerance_deg</li>
+     * </ul>
+     * 
+     * @param json The JSON object containing constraints
+     * @return PathConstraints object with parsed values
+     */
     private static Path.PathConstraints parsePathConstraints(JSONObject json) {
         Path.PathConstraints constraints = new Path.PathConstraints();
         JSONObject constraintsJson = (JSONObject) json.get("constraints");
@@ -219,6 +356,12 @@ public class JsonUtils {
         return constraints;
     }
 
+    /**
+     * Parses default global constraints from a JSON object.
+     * 
+     * @param json The JSON object containing global constraint values
+     * @return DefaultGlobalConstraints with all required values
+     */
     private static Path.DefaultGlobalConstraints parseDefaultGlobalConstraints(JSONObject json) {
         double dMaxVelMps = ((Number) json.get("default_max_velocity_meters_per_sec")).doubleValue();
         double dMaxAccMps2 = ((Number) json.get("default_max_acceleration_meters_per_sec2")).doubleValue();
@@ -239,6 +382,13 @@ public class JsonUtils {
         );
     }
 
+    /**
+     * Parses a ranged constraint array from JSON.
+     * 
+     * @param constraintsJson The constraints JSON object
+     * @param key The key for the constraint array
+     * @param setter Consumer to set the parsed constraint values
+     */
     private static void parseConstraint(JSONObject constraintsJson, String key, java.util.function.Consumer<Optional<ArrayList<Path.RangedConstraint>>> setter) {
         JSONArray arr = (JSONArray) constraintsJson.get(key);
         if (arr != null && !arr.isEmpty()) {
@@ -254,6 +404,24 @@ public class JsonUtils {
         }
     }
 
+    /**
+     * Loads global constraints from a config.json file in the specified directory.
+     * 
+     * <p>The config.json file should contain default values for all constraint types:
+     * <ul>
+     *   <li>default_max_velocity_meters_per_sec</li>
+     *   <li>default_max_acceleration_meters_per_sec2</li>
+     *   <li>default_max_velocity_deg_per_sec</li>
+     *   <li>default_max_acceleration_deg_per_sec2</li>
+     *   <li>default_end_translation_tolerance_meters</li>
+     *   <li>default_end_rotation_tolerance_deg</li>
+     *   <li>default_intermediate_handoff_radius_meters</li>
+     * </ul>
+     * 
+     * @param autosDir The directory containing config.json
+     * @return DefaultGlobalConstraints loaded from the config file
+     * @throws RuntimeException if the config file cannot be read or parsed
+     */
     public static Path.DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
         try {
             File config = new File(autosDir, "config.json");
