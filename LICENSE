@@ -38,11 +38,6 @@ This project incorporates limited portions of code from the following open-sourc
   Licensed under the BSD 3-Clause License.  
   Source: <https://github.com/wpilibsuite/allwpilib>
 
-- **AdvantageKit**  
-  © 2021–2025 Littleton Robotics (FRC 6328 "Mechanical Advantage").  
-  Licensed under the BSD 3-Clause License.  
-  Source: <https://github.com/Mechanical-Advantage/AdvantageKit>
-
 - **PathPlanner**  
   Includes a copy of the `FlippingUtil` class.  
   © mjansen4857 / PathPlanner contributors.  
