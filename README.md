@@ -4,7 +4,7 @@ BLine-Lib is a path following library designed for the FIRST Robotics Competitio
 
 Developed in-house by FRC Team 2638 Rebel Robotics, by students for students, with development beginning in late June of 2025, BLine plays into the recent emergence of the FRC polyline path planning meta, with renowned teams such as 2056 and 2910 (among others) running their own solutions during the 2025 Reefscape game.
 
-📚 **[Full Javadoc Documentation](https://etherexstudios.github.io/BLine-Lib/javadoc/)** | 🔧 **[BLine-GUI](https://github.com/EtherexStudios/BLine-GUI)**
+📚 **[Full Javadoc Documentation](https://javadoc.jitpack.io/com/github/EtherexStudios/BLine-Lib/latest/javadoc/)** | 🔧 **[BLine-GUI](https://github.com/EtherexStudios/BLine-GUI)**
 
 ## Core Concepts
 
@@ -304,7 +304,7 @@ Paths are stored as JSON files in `deploy/autos/paths/`. Example:
 
 ## API Reference
 
-For complete API documentation, see the **[Javadoc](https://etherexstudios.github.io/BLine-Lib/javadoc/)**.
+For complete API documentation, see the **[Javadoc](https://javadoc.jitpack.io/com/github/EtherexStudios/BLine-Lib/latest/javadoc/)**.
 
 ### Path Class
 
