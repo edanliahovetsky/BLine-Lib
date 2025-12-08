@@ -49,32 +49,13 @@ There are three recommended ways to use BLine, depending on your team's workflow
 
 Use the BLine-GUI for visual path planning, with paths stored as JSON files and loaded by the library.
 
-**Advantages:**
-- Visual path editing with real-time feedback
-- Easy iteration without code changes
-- Non-programmers can contribute to path tuning
-- Version control friendly (JSON diffs are readable)
-
 ### 📄 JSON Primary: Lib + JSON Loading
 
-Define paths directly in JSON files without using the GUI—great for teams comfortable with text editors.
-
-**Advantages:**
-- No additional tooling required
-- Full control over path structure
-- Quick copy-paste between paths
-- Easy batch modifications via find/replace
+Define paths directly in JSON files without using the GUI.
 
 ### 💻 Code Only: Lib + Code-Defined Paths
 
 Define all paths and constraints programmatically in Java—no external files needed.
-
-**Advantages:**
-- Everything lives in version control with your code
-- Dynamic path generation at runtime
-- No deploy directory dependencies
-- IDE autocomplete and type safety
-- Ideal for generated or computed paths
 
 ## Performance
 
