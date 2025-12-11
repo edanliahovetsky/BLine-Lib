@@ -4,7 +4,7 @@ BLine-Lib is a path following library designed for the FIRST Robotics Competitio
 
 Developed in-house by FRC Team 2638 Rebel Robotics, by students for students, with development beginning in late June of 2025, BLine plays into the recent emergence of the FRC polyline path planning meta, with renowned teams such as 2056 and 2910 (among others) running their own solutions during the 2025 Reefscape game.
 
-📚 **[Full Javadoc Documentation](https://javadoc.jitpack.io/com/github/EtherexStudios/BLine-Lib/latest/javadoc/)** | 🔧 **[BLine-GUI](https://github.com/EtherexStudios/BLine-GUI)**
+📚 **[Full Javadoc Documentation](https://javadoc.jitpack.io/com/github/edanliahovetsky/BLine-Lib/latest/javadoc/)** | 🔧 **[BLine-GUI](https://github.com/edanliahovetsky/BLine-GUI)**
 
 ## Core Concepts
 
@@ -81,7 +81,7 @@ A **15.5% increase** in total path cross-track error (CTE) was found across case
 5. Paste this URL:
 
 ```
-https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine-Lib.json
+https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/main/BLine-Lib.json
 ```
 
 ### Using Gradle (Alternative)
@@ -98,7 +98,7 @@ Add the dependency:
 
 ```gradle
 dependencies {
-    implementation 'com.github.EtherexStudios:BLine-Lib:0.3.0'
+    implementation 'com.github.edanliahovetsky:BLine-Lib:0.3.0'
 }
 ```
 
@@ -244,7 +244,7 @@ Manually rotate the swerve modules to face the initial path direction before the
 
 ### Using BLine-GUI
 
-BLine-Lib can be used in combination with the [BLine-GUI](https://github.com/EtherexStudios/BLine-GUI). The BLine-GUI provides a visual interface for planning and editing BLine paths, making it easy to design complex autonomous routines.
+BLine-Lib can be used in combination with the [BLine-GUI](https://github.com/edanliahovetsky/BLine-GUI). The BLine-GUI provides a visual interface for planning and editing BLine paths, making it easy to design complex autonomous routines.
 
 ### Working Directly with JSON
 
@@ -285,7 +285,7 @@ Paths are stored as JSON files in `deploy/autos/paths/`. Example:
 
 ## API Reference
 
-For complete API documentation, see the **[Javadoc](https://javadoc.jitpack.io/com/github/EtherexStudios/BLine-Lib/latest/javadoc/)**.
+For complete API documentation, see the **[Javadoc](https://javadoc.jitpack.io/com/github/edanliahovetsky/BLine-Lib/latest/javadoc/)**.
 
 ### Path Class
 

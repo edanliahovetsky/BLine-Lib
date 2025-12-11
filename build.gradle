@@ -3,7 +3,7 @@ plugins {
     id 'maven-publish'
 }
 
-group = 'com.github.EtherexStudios'
+group = 'com.github.edanliahovetsky'
 version = '0.3.0'
 
 java {
@@ -44,14 +44,14 @@ publishing {
         maven(MavenPublication) {
             from components.java
             
-            groupId = 'com.github.EtherexStudios'
+            groupId = 'com.github.edanliahovetsky'
             artifactId = 'BLine-Lib'
             version = project.version
             
             pom {
                 name = 'BLine-Lib'
                 description = 'A path following library for FRC robots'
-                url = 'https://github.com/EtherexStudios/BLine-Lib'
+                url = 'https://github.com/edanliahovetsky/BLine-Lib'
                 
                 licenses {
                     license {

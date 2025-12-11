@@ -7,10 +7,10 @@
     "mavenUrls": [
         "https://jitpack.io"
     ],
-    "jsonUrl": "https://raw.githubusercontent.com/EtherexStudios/BLine-Lib/main/BLine-Lib.json",
+    "jsonUrl": "https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/main/BLine-Lib.json",
     "javaDependencies": [
         {
-            "groupId": "com.github.EtherexStudios",
+            "groupId": "com.github.edanliahovetsky",
             "artifactId": "BLine-Lib",
             "version": "0.3.0"
         }
