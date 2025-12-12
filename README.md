@@ -66,7 +66,7 @@ A whitepaper on the performance analysis of BLine can be found [here](<!-- TODO:
 **Quantitative Results:** Data from randomized Monte Carlo trials demonstrated:
 - **97% reduction** in path computation time
 - **66% reduction** in cross-track error at waypoints
-- Negligible **2.6% decrease** in total path following time compared to PathPlanner
+- Negligible **2.6% decrease** in total path following time compared to PathPlanner - **CHECK THIS**
 
 A **15.5% increase** in total path cross-track error (CTE) was found across cases. However, this is an artifact of the ABC optimization process which prioritized total path time and collision avoidance with obstacles. CTE was not of critical importance to the optimizer and the deviation is negligible for the majority of FRC use cases. Users can easily reduce cross-track error through tuning of the cross-track-error feedback loop and handoff radii.
 
