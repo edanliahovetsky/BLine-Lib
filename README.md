@@ -59,14 +59,12 @@ Define all paths and constraints programmatically in Java—no external files ne
 
 ## Performance
 
-A whitepaper on the performance analysis of BLine can be found [here](<!-- TODO: Insert Google Docs link -->).
-
 **Validation Pipeline:** Validated the architecture by building a WPILib physics simulation; utilized Theta* for initial pathfinding and an Artificial Bee Colony (ABC) optimizer to benchmark the system against PathPlanner.
 
 **Quantitative Results:** Data from randomized Monte Carlo trials demonstrated:
 - **97% reduction** in path computation time
 - **66% reduction** in cross-track error at waypoints
-- Negligible **2.6% decrease** in total path following time compared to PathPlanner - **CHECK THIS**
+- Negligible **2.6% decrease** in total path following time compared to PathPlanner
 
 A **15.5% increase** in total path cross-track error (CTE) was found across cases. However, this is an artifact of the ABC optimization process which prioritized total path time and collision avoidance with obstacles. CTE was not of critical importance to the optimizer and the deviation is negligible for the majority of FRC use cases. Users can easily reduce cross-track error through tuning of the cross-track-error feedback loop and handoff radii.
 
