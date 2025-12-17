@@ -59,8 +59,6 @@ Define all paths and constraints programmatically in Java—no external files ne
 
 ## Performance
 
-A whitepaper on the performance analysis of BLine can be found [here](<!-- TODO: Insert Google Docs link -->).
-
 **Validation Pipeline:** Validated the architecture by building a WPILib physics simulation; utilized Theta* for initial pathfinding and an Artificial Bee Colony (ABC) optimizer to benchmark the system against PathPlanner.
 
 **Quantitative Results:** Data from randomized Monte Carlo trials demonstrated:
