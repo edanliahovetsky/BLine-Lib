@@ -260,6 +260,59 @@ class FollowPathTest {
     }
 
     @Test
+    void earlyHandoffDoesNotSkipTheUnfinishedRotationSchedule() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPathV2.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(.5, 0, Rotation2d.fromDegrees(90)), .3),
+            new Path.Waypoint(new Pose2d(1.5, 0, Rotation2d.fromDegrees(180))));
+        var command = createCommand(path, robot);
+        command.initialize();
+        robot.setPose(new Pose2d(.199999, 0, Rotation2d.ZERO));
+        runExecute(command, robot);
+        double before = logs.get("FollowPath/targetRotationDeg");
+        robot.setPose(new Pose2d(.200001, 0, Rotation2d.ZERO));
+        runExecute(command, robot);
+        double after = logs.get("FollowPath/targetRotationDeg");
+        assertEquals(36, before, .001);
+        assertEquals(36, after, .001, "Early translation handoff must not jump to the 90 degree anchor");
+        assertTrue(after - before < .001);
+        robot.setPose(new Pose2d(.1, 0, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(after, logs.get("FollowPath/targetRotationDeg"), 1e-9, "A backward disturbance must not replay rotation progress");
+        command.end(true);
+    }
+
+    @Test
+    void cornerProjectionJoinPreservesTheOldHeadingAndThenReachesTheFinalHeading() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPathV2.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(90)), .7),
+            new Path.Waypoint(new Pose2d(2, 2, Rotation2d.fromDegrees(180))));
+        var command = createCommand(path, robot);
+        command.initialize();
+        robot.setPose(new Pose2d(1.6, .39, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(72, logs.get("FollowPath/targetRotationDeg"), 1e-6);
+        robot.setPose(new Pose2d(1.61, .4, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(72.45, logs.get("FollowPath/targetRotationDeg"), 1e-6,
+            "Switching the closer projection must keep the old calculation at the current pose");
+        robot.setPose(new Pose2d(2, 1.2, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(126.225, logs.get("FollowPath/targetRotationDeg"), 1e-6);
+        robot.setPose(new Pose2d(2, 2, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(180, Math.abs(logs.get("FollowPath/targetRotationDeg")), 1e-6);
+        command.end(true);
+    }
+
+    @Test
     void rotationTargetPoseLoggingUsesTargetRotationAndNewKey() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
         FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
