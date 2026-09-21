@@ -234,6 +234,12 @@ final class Follower {
     private double lastTimestamp = 0;
     private Pose2d pathInitStartPose = new Pose2d();
     private RotationProgress rotationProgress;
+    private TankController tankController;
+    private java.util.OptionalDouble tankFinalHeading = java.util.OptionalDouble.empty();
+    private boolean rollingEnd;
+    private boolean rollingHandoff;
+    private boolean executed;
+    private boolean reportedTankRecovery;
     private Rotation2d currentRotationTargetRad = new Rotation2d();
     private double currentRotationTargetInitRad = 0;
     private List<Pair<PathElement, PathElementConstraint>> pathElementsWithConstraints = new ArrayList<>();
@@ -303,6 +309,9 @@ final class Follower {
 
     void initialize() {
         initialized = false;
+        executed = false;
+        rollingHandoff = false;
+        reportedTankRecovery = false;
         active = true;
         eventExecution = new PendingEvents.Execution();
         pathElementsWithConstraints = new ArrayList<>();
@@ -311,9 +320,6 @@ final class Follower {
         if (driveType != DriveType.TANK && direction != DriveDirection.FORWARD) {
             logger.warning("FollowPath: BACKWARD tank drive direction requires DriveType.TANK");
             return;
-        }
-        if (driveType == DriveType.TANK) {
-            throw new UnsupportedOperationException("Tank controller implementation is not included in this development checkpoint");
         }
         var error = path.validationError();
         if (error.isPresent()) {
@@ -337,6 +343,11 @@ final class Follower {
             }
             return entry;
         }).toList();
+        var finalTranslationConstraint = (TranslationTargetConstraint) pathElementsWithConstraints.getLast().getSecond();
+        rollingEnd = finalTranslationConstraint.minVelocityMetersPerSec() > 0;
+        var lastAuthored = path.getPathElements().getLast();
+        tankFinalHeading = lastAuthored instanceof Path.Waypoint waypoint
+            ? java.util.OptionalDouble.of(waypoint.rotationTarget().rotation().getRadians()) : java.util.OptionalDouble.empty();
         if (resetPose) {
             if (path.hasAuthoredStart()) {
                 poseResetConsumer.accept(path.authoredStartPose(poseSupplier.get().getRotation()));
@@ -353,7 +364,9 @@ final class Follower {
         firedEventTriggerCount = 0;
         lastTimestamp = timestampSupplier.get();
         pathInitStartPose = poseSupplier.get();
-        lastSpeeds = robotRelativeSpeedsSupplier.get().toFieldRelative( pathInitStartPose.getRotation());
+        ChassisVelocities initialMeasured = robotRelativeSpeedsSupplier.get();
+        lastSpeeds = initialMeasured.toFieldRelative(pathInitStartPose.getRotation());
+        tankController = driveType == DriveType.TANK ? new TankController(initialMeasured) : null;
         rotationProgress = new RotationProgress(pathElementsWithConstraints.stream().map(Pair::getFirst).toList(), pathInitStartPose);
         currentRotationTargetInitRad = pathInitStartPose.getRotation().getRadians();
         rotationController.reset();
@@ -385,6 +398,14 @@ final class Follower {
         logDouble("FollowPath/dtSeconds", dt);
 
         Pose2d currentPose = poseSupplier.get();
+        ChassisVelocities measured = robotRelativeSpeedsSupplier.get();
+        if (!finite(currentPose.getX(), currentPose.getY(), currentPose.getRotation().getRadians(),
+                measured.vx, measured.vy, measured.omega, now, dt)) {
+            failExecution("Non-finite pose, measured velocity, or timestamp");
+            return;
+        }
+        if (dt <= 0) return;
+        executed = true;
 
         // Phase 1: verify translation cursor integrity before doing any control math.
         if (translationElementIndex >= pathElementsWithConstraints.size()) {
@@ -431,7 +452,7 @@ final class Follower {
         logDouble("FollowPath/rotationPreviousElementIndex", (double) rotationSample.previousIndex());
         logDouble("FollowPath/segmentProgress", rotationSample.intervalProgress());
 
-        // Event triggers use the same segment/t-ratio semantics as rotation targets.
+        // Events retain their translation-segment progress and authored ordering.
         processEventTriggers(currentPose);
 
         // Phase 4: compute translational command vector.
@@ -439,6 +460,16 @@ final class Follower {
             ? ((TranslationTarget) pathElementsWithConstraints.get(translationElementIndex).getFirst()).translation()
             : currentPose.getTranslation();
         double remainingDistance = calculateRemainingPathDistance();
+        cachedRemainingDistance = remainingDistance;
+        boolean finalPositionReached = findNextTranslationTargetIndex(translationElementIndex + 1) < 0
+            && remainingDistance <= endTranslationTolerance;
+        if (finalPositionReached && rollingEnd) {
+            // Preserve the achievable incoming command, including final queued events.
+            // Do not invent an instantaneous speed/heading change at the endpoint.
+            rollingHandoff = true;
+            robotRelativeSpeedsConsumer.accept(lastSpeeds.toRobotRelative(currentPose.getRotation()));
+            return;
+        }
         double angleToTarget = Math.atan2(
             targetTranslation.getY() - currentPose.getTranslation().getY(),
             targetTranslation.getX() - currentPose.getTranslation().getX()
@@ -459,7 +490,7 @@ final class Follower {
             translationConstraint.maxVelocityMetersPerSec()
         );
         boolean shouldApplyTranslationMinimum =
-            remainingDistance > endTranslationTolerance;
+            rollingEnd || remainingDistance > endTranslationTolerance;
         double translationControllerOutput = applyMinimumMagnitude(
             clampedTranslationControllerOutput,
             translationConstraint.minVelocityMetersPerSec(),
@@ -492,8 +523,7 @@ final class Follower {
         vy += crossTrackControllerOutput * Math.sin(angleToTarget - Math.PI / 2);
 
         // Final settling is deliberately separate from intermediate geometric interpolation.
-        boolean finalPositionReached = findNextTranslationTargetIndex(translationElementIndex + 1) < 0
-            && remainingDistance <= endTranslationTolerance;
+        if (finalPositionReached && !rollingEnd && driveType != DriveType.TANK) { vx = 0; vy = 0; }
         double targetRotationRad = finalPositionReached
             ? rotationProgress.finalHeadingRadians() : rotationSample.headingRadians();
         int constraintIndex = finalPositionReached ? rotationProgress.finalElementIndex()
@@ -507,8 +537,24 @@ final class Follower {
         if (finalPositionReached) rotationElementIndex = rotationProgress.finalElementIndex();
         if (constraintIndex >= 0) logPose("FollowPath/rotationTargetPose", rotationProgress.targetPose(constraintIndex));
 
+        TankController.Target tankTarget = null;
+        if (driveType == DriveType.TANK) {
+            double norm = Math.hypot(vx, vy);
+            double scale = norm > translationConstraint.maxVelocityMetersPerSec()
+                ? translationConstraint.maxVelocityMetersPerSec() / norm : 1;
+            tankTarget = tankController.target(vx * scale, vy * scale, currentPose, measured,
+                finalPositionReached, rollingEnd, tankFinalHeading, Math.toRadians(endRotationTolerance), direction);
+            if (tankTarget.phaseChanged()) {
+                translationController.reset();
+                crossTrackController.reset();
+                rotationController.reset();
+            }
+            targetRotationRad = tankTarget.heading();
+            currentRotationTargetRad = new Rotation2d(targetRotationRad);
+        }
         targetRotationRad = MathUtil.angleModulus(targetRotationRad);
-        double rotationPidOutput = rotationController.calculate(currentPose.getRotation().getRadians(), targetRotationRad);
+        double rotationPidOutput = tankTarget != null && !tankTarget.steer() ? 0
+            : rotationController.calculate(currentPose.getRotation().getRadians(), targetRotationRad);
         double rotationErrorRad = MathUtil.angleModulus(targetRotationRad - currentPose.getRotation().getRadians());
         double rawOmega = rotationPidOutput;
         double maxOmegaRadPerSec = Math.toRadians(rotationConstraint.maxVelocityDegPerSec());
@@ -526,6 +572,13 @@ final class Follower {
         boolean rotationMinimumApplied =
             Math.abs(omega) > Math.abs(clampedOmega) + 1e-9;
 
+        if (tankTarget != null && !tankTarget.steer()
+            || driveType != DriveType.TANK && finalPositionReached
+                && Math.abs(rotationErrorRad) <= Math.toRadians(endRotationTolerance)) {
+            omega = 0;
+            rotationMinimumApplied = false;
+        }
+
         DoubleSupplier activeRotationOverrideSupplier = rotationOverrideSupplier;
         RotationOverrideBehavior activeRotationOverrideBehavior = rotationOverrideBehavior;
         boolean rotationOverrideActive = activeRotationOverrideSupplier != null;
@@ -540,26 +593,33 @@ final class Follower {
         }
 
         // Phase 6: apply acceleration/velocity limiting and output final command.
-        ChassisVelocities targetSpeeds = new ChassisVelocities(vx, vy, omega);
-        targetSpeeds = ChassisRateLimiter.limit(
-            targetSpeeds, 
-            lastSpeeds, 
-            dt, 
-            translationConstraint.maxAccelerationMetersPerSec2(),
-            Math.toRadians(rotationConstraint.maxAccelerationDegPerSec2()),
-            translationConstraint.maxVelocityMetersPerSec(),
-            Math.toRadians(rotationConstraint.maxVelocityDegPerSec())
-        );
-        if (rotationOverrideBypassesConstraints) {
-            targetSpeeds = new ChassisVelocities(
-                targetSpeeds.vx,
-                targetSpeeds.vy,
-                rotationOverrideOmegaRadPerSec
-            );
+        if (!finite(vx, vy, omega)) {
+            failExecution("Non-finite controller output");
+            return;
         }
-
-        robotRelativeSpeedsConsumer.accept(targetSpeeds.toRobotRelative(currentPose.getRotation()));
-
+        ChassisVelocities targetSpeeds;
+        if (tankTarget != null) {
+            var limited = tankController.limit(tankTarget, omega, new TankRateLimiter.Limits(
+                translationConstraint.maxAccelerationMetersPerSec2(),
+                Math.toRadians(rotationConstraint.maxAccelerationDegPerSec2()),
+                translationConstraint.maxVelocityMetersPerSec(), maxOmegaRadPerSec), dt, direction);
+            if (limited.recovering() && !reportedTankRecovery) {
+                logger.warning("FollowPath: Tank motion exceeds a newly applied limit; recovering without a velocity jump");
+                reportedTankRecovery = true;
+            }
+            double outputOmega = rotationOverrideBypassesConstraints ? rotationOverrideOmegaRadPerSec : limited.velocity().omega();
+            if (rotationOverrideBypassesConstraints) tankController.overrideOmega(outputOmega);
+            ChassisVelocities robotRelative = new ChassisVelocities(limited.velocity().forward(), 0, outputOmega);
+            robotRelativeSpeedsConsumer.accept(robotRelative);
+            targetSpeeds = robotRelative.toFieldRelative(currentPose.getRotation());
+        } else {
+            targetSpeeds = ChassisRateLimiter.limit(new ChassisVelocities(vx, vy, omega), lastSpeeds, dt,
+                translationConstraint.maxAccelerationMetersPerSec2(),
+                Math.toRadians(rotationConstraint.maxAccelerationDegPerSec2()),
+                translationConstraint.maxVelocityMetersPerSec(), maxOmegaRadPerSec);
+            if (rotationOverrideBypassesConstraints) targetSpeeds.omega = rotationOverrideOmegaRadPerSec;
+            robotRelativeSpeedsConsumer.accept(targetSpeeds.toRobotRelative(currentPose.getRotation()));
+        }
         lastSpeeds = targetSpeeds;
 
         if (logCounter++ % 3 == 0) {
@@ -824,7 +884,7 @@ final class Follower {
         Translation2d closestPoint = calculateProjectedPointOnSegment(prevTranslation, targetTranslation, robotPosition);
 
         // Calculate signed cross-track error
-        // Positive = right of path, Negative = left of path
+        // Positive = left of the directed segment, negative = right
         double pathVectorX = targetTranslation.getX() - prevTranslation.getX();
         double pathVectorY = targetTranslation.getY() - prevTranslation.getY();
         double robotVectorX = robotPosition.getX() - prevTranslation.getX();
@@ -833,12 +893,9 @@ final class Follower {
         // Cross product to determine side: positive = left, negative = right
         double crossProduct = pathVectorX * robotVectorY - pathVectorY * robotVectorX;
 
-        // Return signed distance (positive = right of path, negative = left of path)
-        double signedError = robotPosition.getDistance(closestPoint);
-        if (crossProduct < 0) {
-            signedError = -signedError; // Left of path = negative
-        }
-        // Right of path = positive (crossProduct > 0), so no change needed
+        // Collinear overshoot is longitudinal error, not a sideways correction.
+        double signedError = Math.abs(crossProduct) <= SEGMENT_EPSILON * prevTranslation.getDistance(targetTranslation)
+            ? 0 : Math.copySign(robotPosition.getDistance(closestPoint), crossProduct);
 
         logPose("FollowPath/closestPoint", new Pose2d(closestPoint, currentPose.getRotation()));
         logDouble("FollowPath/crossTrackError", signedError);
@@ -997,48 +1054,47 @@ final class Follower {
         return eventIndex > translationElementIndex;
     }
 
-    boolean isFinished() { // TODO add final velocity tolerance
-        if (!initialized) {
-            return true;
-        }
-
-        // Completion requires both translation and rotation traversal to be on their final targets.
-        boolean isLastRotationElement = rotationElementIndex == NO_ACTIVE_ROTATION_INDEX;
-        if (!isLastRotationElement) {
-            isLastRotationElement = true;
-            for (int i = rotationElementIndex + 1; i < pathElementsWithConstraints.size(); i++) {
-                if (pathElementsWithConstraints.get(i).getFirst() instanceof RotationTarget) {
-                    isLastRotationElement = false;
-                    break;
-                }
-            }
-        }
-        boolean isLastTranslationElement = true;
-        for (int i = translationElementIndex+1; i < pathElementsWithConstraints.size(); i++) {
-            if (pathElementsWithConstraints.get(i).getFirst() instanceof TranslationTarget) {
-                isLastTranslationElement = false;
-                break;
-            }
-        }
-        boolean translationAtSetpoint = translationController.atSetpoint();
-        boolean rotationAtSetpoint = Math.abs(currentRotationTargetRad.minus(poseSupplier.get().getRotation()).getRadians()) < Math.toRadians(endRotationTolerance);
-        boolean finished = 
-            isLastRotationElement && isLastTranslationElement && 
-            translationAtSetpoint &&
-            rotationAtSetpoint;
-
+    boolean isFinished() {
+        if (!initialized) return true;
+        if (!executed) return false;
+        boolean lastTranslation = findNextTranslationTargetIndex(translationElementIndex + 1) < 0;
+        boolean atPosition = lastTranslation && calculateRemainingPathDistance() <= endTranslationTolerance;
+        boolean atRotation = Math.abs(currentRotationTargetRad.minus(poseSupplier.get().getRotation()).getRadians())
+            <= Math.toRadians(endRotationTolerance);
+        ChassisVelocities measured = robotRelativeSpeedsSupplier.get();
+        boolean stopped = Math.hypot(lastSpeeds.vx, lastSpeeds.vy) < 1e-8 && Math.abs(lastSpeeds.omega) < 1e-8
+            && Math.hypot(measured.vx, measured.vy) <= TankController.STOPPED_VELOCITY
+            && Math.abs(measured.omega) <= TankController.STOPPED_VELOCITY;
+        boolean finished = rollingEnd ? rollingHandoff : atPosition
+            && (driveType == DriveType.TANK ? tankController.finished() : atRotation && stopped);
         logBoolean("FollowPath/finished", finished);
-        logBoolean("FollowPath/finishedIsLastRotationElement", isLastRotationElement);
-        logBoolean("FollowPath/finishedIsLastTranslationElement", isLastTranslationElement);
-        logBoolean("FollowPath/finishedTranslationAtSetpoint", translationAtSetpoint);
-        logBoolean("FollowPath/finishedRotationAtSetpoint", rotationAtSetpoint);
+        logBoolean("FollowPath/finishedIsLastRotationElement", rotationSampleAtEnd());
+        logBoolean("FollowPath/finishedIsLastTranslationElement", lastTranslation);
+        logBoolean("FollowPath/finishedTranslationAtSetpoint", atPosition);
+        logBoolean("FollowPath/finishedRotationAtSetpoint", atRotation);
         return finished;
+    }
+
+    private boolean rotationSampleAtEnd() {
+        return rotationElementIndex == NO_ACTIVE_ROTATION_INDEX || rotationElementIndex == rotationProgress.finalElementIndex();
     }
 
     void end(boolean interrupted) {
         active = false;
         if (interrupted) events.cancel(eventExecution);
+        if (interrupted || !initialized || !rollingHandoff) stopCommandedMotion();
+    }
+
+    private void failExecution(String message) {
+        logger.warning("FollowPath: " + message);
+        initialized = false;
+        events.cancel(eventExecution);
         stopCommandedMotion();
+    }
+
+    private static boolean finite(double... values) {
+        for (double value : values) if (!Double.isFinite(value)) return false;
+        return true;
     }
 
     /**

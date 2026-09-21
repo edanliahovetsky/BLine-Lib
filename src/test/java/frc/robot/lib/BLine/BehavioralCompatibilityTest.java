@@ -38,6 +38,7 @@ class BehavioralCompatibilityTest {
     );
 
     private final CommandScheduler scheduler = CommandScheduler.getInstance();
+    private double timeSeconds;
     private double originalFieldSizeX;
     private double originalFieldSizeY;
     private FlippingUtil.FieldSymmetry originalSymmetryType;
@@ -48,10 +49,12 @@ class BehavioralCompatibilityTest {
         originalFieldSizeY = FlippingUtil.fieldSizeY;
         originalSymmetryType = FlippingUtil.symmetryType;
         resetDriverStation();
+        FollowPathV2.setTimestampSupplier(() -> timeSeconds);
     }
 
     @AfterEach
     void tearDown() {
+        FollowPathV2.setTimestampSupplier(null);
         resetScheduler();
         scheduler.enable();
         resetDriverStation();
@@ -190,7 +193,7 @@ class BehavioralCompatibilityTest {
         );
 
         scheduler.schedule(scheduledFollower);
-        scheduler.run();
+        tickScheduler();
 
         assertTrue(scheduler.isScheduled(scheduledFollower));
         assertPose(robot.pose, new Pose2d(1.25, 2.50, Rotation2d.fromDegrees(30.0)));
@@ -201,13 +204,13 @@ class BehavioralCompatibilityTest {
 
         robot.setPose(new Pose2d(4.75, 3.25, Rotation2d.fromDegrees(90.0)));
         for (int cycle = 0; cycle < 3; cycle++) {
-            scheduler.run();
+            tickScheduler();
         }
         assertTrue(markerRan.get(), "Loaded event marker should schedule a real Commands v2 command");
 
         robot.setPose(new Pose2d(7.00, 1.50, Rotation2d.fromDegrees(-45.0)));
-        for (int cycle = 0; cycle < 12 && scheduler.isScheduled(scheduledFollower); cycle++) {
-            scheduler.run();
+        for (int cycle = 0; cycle < 100 && scheduler.isScheduled(scheduledFollower); cycle++) {
+            tickScheduler();
         }
 
         assertFalse(scheduler.isScheduled(scheduledFollower), "Follower should finish at the loaded path endpoint");
@@ -232,8 +235,13 @@ class BehavioralCompatibilityTest {
 
     private void scheduleAndRunOnce(Command command) {
         scheduler.schedule(command);
-        scheduler.run();
+        tickScheduler();
         assertTrue(scheduler.isScheduled(command));
+    }
+
+    private void tickScheduler() {
+        timeSeconds += 0.02;
+        scheduler.run();
     }
 
     private void resetScheduler() {

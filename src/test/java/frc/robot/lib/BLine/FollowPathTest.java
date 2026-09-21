@@ -504,31 +504,22 @@ class FollowPathTest {
     }
 
     @Test
-    void translationMinimumBaselineTurnsOffInsideTolerance() {
-        MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
+    void rollingEndpointKeepsAchievedVelocityWithoutWaitingForHeading() {
+        MutableRobot robot = new MutableRobot(new Pose2d(0, 0, new Rotation2d()));
+        robot.setRobotRelativeSpeeds(new ChassisVelocities(1.1, 0, 0.2));
         FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
-        Map<String, Double> doubleLogs = new HashMap<>();
-        Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
-
-        Path path = new Path(
-            new Path.PathConstraints()
-                .setMaxVelocityMetersPerSec(2.0)
-                .setMinVelocityMetersPerSec(1.25),
-            new Path.TranslationTarget(new Translation2d(0.02, 0.0))
-        );
-
+        Path path = new Path(new Path.PathConstraints().setMaxVelocityMetersPerSec(2).setMinVelocityMetersPerSec(1.25),
+            new Path.Waypoint(new Pose2d(0.02, 0, Rotation2d.fromDegrees(90))));
         FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
-
-        assertEquals(
-            doubleLogs.get("FollowPath/clampedTranslationControllerOutput"),
-            doubleLogs.get("FollowPath/translationControllerOutput"),
-            1e-9
-        );
-        assertFalse(booleanLogs.get("FollowPath/translationMinimumApplied"));
+        assertTrue(command.isFinished());
+        command.end(false);
+        assertEquals(1.1, robot.getRobotRelativeSpeeds().vx, 1e-9);
+        assertEquals(0.2, robot.getRobotRelativeSpeeds().omega, 1e-9);
+        // Cancellation must never retain a successful-handoff output.
+        command.end(true);
+        assertTrue(areSpeedsNearZero(robot.getRobotRelativeSpeeds(), 1e-9));
     }
 
     @Test
@@ -616,7 +607,9 @@ class FollowPathTest {
         robot.setPose(new Pose2d(2.0, 0.0, Rotation2d.fromDegrees(90.0)));
         runExecute(command, robot);
 
-        assertTrue(command.isFinished(), "Should finish at final translation while holding final completed rotation");
+        assertFalse(command.isFinished(), "Arrival alone must not end a stopping path while the command is still decelerating");
+        for (int cycle = 0; cycle < 100 && !command.isFinished(); cycle++) runExecute(command, robot);
+        assertTrue(command.isFinished(), "Should finish after braking at the final position and heading");
     }
 
     @Test
@@ -760,11 +753,11 @@ class FollowPathTest {
         FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
         FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
-        FollowPathV2 command = createCommand(createDegenerateRotationPath(1.0), robot);
+        FollowPathV2 command = createCommand(createDegenerateRotationPath(5.0), robot);
         command.initialize();
         runExecute(command, robot);
 
-        double expectedOmega = 5.0 * Math.toRadians(1.0);
+        double expectedOmega = 5.0 * Math.toRadians(5.0);
         assertEquals(expectedOmega, robot.getRobotRelativeSpeeds().omega, 1e-9);
         assertEquals(expectedOmega, doubleLogs.get("FollowPath/rotationPidOutputRadPerSec"), 1e-9);
         assertEquals(expectedOmega, doubleLogs.get("FollowPath/rotationControllerOutput"), 1e-9);
@@ -847,7 +840,7 @@ class FollowPathTest {
         MutableRobot overrideRobot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
         FollowPathV2.setTimestampSupplier(overrideRobot::getTimestampSeconds);
         FollowPathV2.overrideRotation(() -> 10.0);
-        FollowPathV2 overrideCommand = createCommand(createDegenerateRotationPath(1.0), overrideRobot);
+        FollowPathV2 overrideCommand = createCommand(createDegenerateRotationPath(5.0), overrideRobot);
         overrideCommand.initialize();
         runExecute(overrideCommand, overrideRobot);
         assertEquals(10.0, overrideRobot.getRobotRelativeSpeeds().omega, 1e-9);
@@ -856,11 +849,11 @@ class FollowPathTest {
 
         MutableRobot normalRobot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
         FollowPathV2.setTimestampSupplier(normalRobot::getTimestampSeconds);
-        FollowPathV2 normalCommand = createCommand(createDegenerateRotationPath(1.0), normalRobot);
+        FollowPathV2 normalCommand = createCommand(createDegenerateRotationPath(5.0), normalRobot);
         normalCommand.initialize();
         runExecute(normalCommand, normalRobot);
 
-        double expectedOmega = 5.0 * Math.toRadians(1.0);
+        double expectedOmega = 5.0 * Math.toRadians(5.0);
         assertEquals(expectedOmega, normalRobot.getRobotRelativeSpeeds().omega, 1e-9);
     }
 
