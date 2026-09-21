@@ -272,7 +272,6 @@ public final class FollowPathV2 extends Command {
     /** @return remaining translational distance in metres, or zero before initialization */
     public double getRemainingPathDistanceMeters() { return follower.getRemainingPathDistanceMeters(); }
 
-    void useProgressHandoffs(boolean enabled) { follower.useTRatioBasedTranslationHandoffs = enabled; }
 
     @Override public void initialize() {
         try { follower.initialize(); }

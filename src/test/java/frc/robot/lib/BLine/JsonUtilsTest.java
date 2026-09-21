@@ -2,6 +2,7 @@ package frc.robot.lib.BLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +16,41 @@ import org.junit.jupiter.api.io.TempDir;
 class JsonUtilsTest {
     @TempDir
     java.nio.file.Path tempDir;
+
+    @Test
+    void publicLoaderPreservesHandoffOverridesAndIdentifiesMalformedFields() throws IOException {
+        writeConfig("{\"kinematic_constraints\":{\"default_handoff_mode\":\"progress\"}}");
+        Files.createDirectories(tempDir.resolve("paths"));
+        var file = tempDir.resolve("paths/Score Left.json");
+        Files.writeString(file, """
+            {"handoff_mode":"radius", "path_elements":[
+              {"type":"translation", "x_meters":1, "y_meters":2,
+               "handoff_mode":"progress", "intermediate_handoff_radius_meters":0.3}
+            ]}
+            """);
+        var path = new Path(tempDir.toFile(), "Score Left.json");
+        assertEquals(HandoffMode.PROGRESS, Path.getDefaultHandoffMode());
+        assertEquals(HandoffMode.RADIUS, path.getHandoffMode().orElseThrow());
+        var target = (Path.TranslationTarget) path.getPathElements().get(0);
+        assertEquals(HandoffMode.PROGRESS, target.handoffMode().orElseThrow());
+        assertEquals(.3, target.intermediateHandoffRadiusMeters().orElseThrow());
+        assertTrue(new Path(tempDir.toFile(), "Score Left").isValid());
+
+        Files.writeString(file, """
+            {"path_elements":[{"type":"translation","y_meters":2}]}
+            """);
+        var error = assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Score Left"));
+        assertTrue(error.getMessage().contains("Score Left.json"));
+        assertTrue(error.getMessage().contains("element 1.translation.x_meters is missing"), error.getMessage());
+        Files.writeString(file, """
+            {"handoff_mode":"typo", "path_elements":[{"type":"translation","x_meters":1,"y_meters":2}]}
+            """);
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Score Left"))
+            .getMessage().contains("handoff_mode"));
+        writeConfig("{}");
+        Path.loadGlobalConstraints(tempDir.toFile());
+        assertEquals(HandoffMode.RADIUS, Path.getDefaultHandoffMode(), "Old projects retain radius behavior");
+    }
 
     @Test
     void loadGlobalConstraintsSupportsKinematicConstraintsSchema() throws IOException {

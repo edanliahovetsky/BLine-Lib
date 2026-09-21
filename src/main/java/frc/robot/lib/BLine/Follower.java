@@ -143,9 +143,9 @@ final class Follower {
     private final PIDController crossTrackController;
 
     private void configureControllers() {
-        translationController.setTolerance(path.getEndTranslationToleranceMeters());
-        rotationController.setTolerance(Math.toRadians(path.getEndRotationToleranceDeg()));
-        crossTrackController.setTolerance(path.getEndTranslationToleranceMeters());
+        translationController.setTolerance(endTranslationTolerance);
+        rotationController.setTolerance(Math.toRadians(endRotationTolerance));
+        crossTrackController.setTolerance(endTranslationTolerance);
         rotationController.enableContinuousInput(-Math.PI, Math.PI);
     }
 
@@ -222,7 +222,9 @@ final class Follower {
     private BooleanSupplier shouldFlipPathSupplier;
     private BooleanSupplier shouldMirrorPathSupplier;
     private final Consumer<Pose2d> poseResetConsumer;
-    boolean useTRatioBasedTranslationHandoffs;
+    private Path.DefaultGlobalConstraints executionDefaults;
+    private double endTranslationTolerance;
+    private double endRotationTolerance;
     
     private int rotationElementIndex = NO_ACTIVE_ROTATION_INDEX;
     private int translationElementIndex = 0;
@@ -336,7 +338,20 @@ final class Follower {
         if (shouldFlipPathSupplier != null) path.setFlipped(shouldFlipPathSupplier.getAsBoolean());
         if (shouldMirrorPathSupplier != null) path.setMirrored(shouldMirrorPathSupplier.getAsBoolean());
         // Resolve constraints before any reset or event can have a side effect.
-        pathElementsWithConstraints = path.getPathElementsWithConstraintsNoWaypoints();
+        executionDefaults = path.getDefaultGlobalConstraints();
+        endTranslationTolerance = path.getEndTranslationToleranceMeters();
+        endRotationTolerance = path.getEndRotationToleranceDeg();
+        HandoffMode inheritedMode = path.getHandoffMode().orElse(Path.getDefaultHandoffMode());
+        pathElementsWithConstraints = path.getPathElementsWithConstraintsNoWaypoints().stream().map(entry -> {
+            if (entry.getFirst() instanceof TranslationTarget target) {
+                PathElement resolved = new TranslationTarget(target.translation(),
+                    java.util.Optional.of(target.intermediateHandoffRadiusMeters()
+                        .orElse(executionDefaults.getIntermediateHandoffRadiusMeters())),
+                    java.util.Optional.of(target.handoffMode().orElse(inheritedMode)));
+                return new Pair<>(resolved, entry.getSecond());
+            }
+            return entry;
+        }).toList();
         if (resetPose) {
             if (path.hasAuthoredStart()) {
                 poseResetConsumer.accept(path.authoredStartPose(poseSupplier.get().getRotation()));
@@ -371,7 +386,7 @@ final class Follower {
                 pathTranslations.add(((TranslationTarget) pathElementsWithConstraints.get(i).getFirst()).translation());
             }
         }
-        logBoolean("FollowPath/useTRatioBasedTranslationHandoffs", useTRatioBasedTranslationHandoffs);
+        logBoolean("FollowPath/useTRatioBasedTranslationHandoffs", inheritedMode == HandoffMode.PROGRESS);
         translationListLoggingConsumer.accept(new Pair<>("FollowPath/pathTranslations", pathTranslations.toArray(Translation2d[]::new)));
     }
 
@@ -469,7 +484,7 @@ final class Follower {
             translationConstraint.maxVelocityMetersPerSec()
         );
         boolean shouldApplyTranslationMinimum =
-            remainingDistance > path.getEndTranslationToleranceMeters();
+            remainingDistance > endTranslationTolerance;
         double translationControllerOutput = applyMinimumMagnitude(
             clampedTranslationControllerOutput,
             translationConstraint.minVelocityMetersPerSec(),
@@ -557,8 +572,8 @@ final class Follower {
             targetRotationRad = previousRotationElementTargetRad;
             currentRotationTargetRad = new Rotation2d(targetRotationRad);
             rotationConstraint = new RotationTargetConstraint(
-                    path.getDefaultGlobalConstraints().getMaxVelocityDegPerSec(), 
-                    path.getDefaultGlobalConstraints().getMaxAccelerationDegPerSec2()
+                    executionDefaults.getMaxVelocityDegPerSec(),
+                    executionDefaults.getMaxAccelerationDegPerSec2()
                 );
         }
 
@@ -570,7 +585,7 @@ final class Follower {
         double minOmegaRadPerSec = Math.toRadians(rotationConstraint.minVelocityDegPerSec());
         double clampedOmega = Math.clamp(rawOmega, -maxOmegaRadPerSec, maxOmegaRadPerSec);
         boolean shouldApplyRotationMinimum =
-            Math.abs(rotationErrorRad) > Math.toRadians(path.getEndRotationToleranceDeg());
+            Math.abs(rotationErrorRad) > Math.toRadians(endRotationTolerance);
         double omega = applyMinimumMagnitude(
             clampedOmega,
             minOmegaRadPerSec,
@@ -721,7 +736,7 @@ final class Follower {
 
             TranslationTarget currentTranslationTarget = (TranslationTarget) pathElementsWithConstraints.get(translationElementIndex).getFirst();
             double handoffRadius = currentTranslationTarget.intermediateHandoffRadiusMeters()
-                .orElse(path.getDefaultGlobalConstraints().getIntermediateHandoffRadiusMeters());
+                .orElse(executionDefaults.getIntermediateHandoffRadiusMeters());
 
             TranslationSegmentState currentSegment = getCurrentTranslationSegmentState(currentPose);
             if (!shouldHandoffTranslationTarget(currentPose, currentTranslationTarget, currentSegment, handoffRadius)) {
@@ -749,7 +764,7 @@ final class Follower {
             return true;
         }
 
-        if (!useTRatioBasedTranslationHandoffs) {
+        if (currentTranslationTarget.handoffMode().orElseThrow() == HandoffMode.RADIUS) {
             return distanceToTarget <= handoffRadius;
         }
 
@@ -1218,7 +1233,7 @@ final class Follower {
             }
         }
         boolean translationAtSetpoint = translationController.atSetpoint();
-        boolean rotationAtSetpoint = Math.abs(currentRotationTargetRad.minus(poseSupplier.get().getRotation()).getRadians()) < Math.toRadians(path.getEndRotationToleranceDeg());
+        boolean rotationAtSetpoint = Math.abs(currentRotationTargetRad.minus(poseSupplier.get().getRotation()).getRadians()) < Math.toRadians(endRotationTolerance);
         boolean finished = 
             isLastRotationElement && isLastTranslationElement && 
             translationAtSetpoint &&

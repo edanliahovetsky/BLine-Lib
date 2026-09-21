@@ -274,7 +274,6 @@ public final class FollowPath implements Command {
     /** @return remaining translational distance in metres, or zero before initialization */
     public double getRemainingPathDistanceMeters() { return follower.getRemainingPathDistanceMeters(); }
 
-    void useProgressHandoffs(boolean enabled) { follower.useTRatioBasedTranslationHandoffs = enabled; }
 
     @Override public String name() { return "FollowPath"; }
     @Override public Set<Mechanism> requirements() { return requirements; }

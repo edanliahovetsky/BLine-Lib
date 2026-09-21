@@ -22,84 +22,9 @@ import java.util.ArrayList;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-/**
- * Utility class for loading and parsing path data from JSON files.
- * 
- * <p>This class provides methods to load {@link Path} objects from JSON files stored in the
- * robot's deploy directory. It supports loading individual paths as well as global constraint
- * configurations.
- * 
- * <h2>File Structure</h2>
- * <p>The expected directory structure under the deploy directory is:
- * <pre>
- * deploy/
- *   autos/
- *     config.json          (global constraints configuration)
- *     paths/
- *       myPath.json        (individual path files)
- *       otherPath.json
- * </pre>
- * 
- * <h2>Path JSON Format</h2>
- * <p>Path JSON files contain:
- * <ul>
- *   <li><b>path_elements:</b> Array of translation, rotation, and waypoint targets</li>
- *   <li><b>constraints:</b> Optional path-specific velocity/acceleration constraints</li>
- *   <li><b>default_global_constraints:</b> Optional override for global constraints</li>
- * </ul>
- * 
- * <h2>Usage Examples</h2>
- * <pre>{@code
- * // Load a path from the default autos directory
- * Path path = JsonUtils.loadPath("myPath.json");
- * 
- * // Load a path from a custom directory
- * Path path = JsonUtils.loadPath(new File("/custom/dir"), "myPath.json");
- * 
- * // Load global constraints only
- * Path.DefaultGlobalConstraints globals = JsonUtils.loadGlobalConstraints(JsonUtils.PROJECT_ROOT);
- * }</pre>
- * 
- * @see Path
- * @see Path.DefaultGlobalConstraints
- */
-public class JsonUtils {
-    /**
-     * Container for parsed path components without constructing a full Path object.
-     * 
-     * <p>This record is useful for separating JSON parsing from Path construction,
-     * which can be helpful for performance measurements or when you need to inspect
-     * the parsed data before creating a Path.
-     * 
-     * @param elements The list of parsed path elements
-     * @param constraints The parsed path-specific constraints
-     * @param defaultGlobalConstraints The default global constraints to use
-     */
-    public static record ParsedPathComponents(
-        ArrayList<PathElement> elements,
-        Path.PathConstraints constraints,
-        Path.DefaultGlobalConstraints defaultGlobalConstraints
-    ) {
-        /**
-         * Constructs a Path from these parsed components.
-         * 
-         * <p>This method creates a new Path using the pre-parsed components,
-         * avoiding the overhead of JSON parsing.
-         * 
-         * @return A new Path constructed from the parsed components
-         */
-        public Path toPath() {
-            return new Path(elements, constraints, defaultGlobalConstraints);
-        }
-    }
-
-    /**
-     * The default project root directory for auto routines.
-     * 
-     * <p>This is set to the "autos" subdirectory within the robot's deploy directory.
-     * Path files should be placed in a "paths" subdirectory within this location.
-     */
-    public static final File PROJECT_ROOT = resolveProjectRoot();
+/** Internal codec for the public {@link Path} loading API. */
+final class JsonUtils {
+    private JsonUtils() {}
 
     private static final String[][] PATH_CONSTRAINT_KEY_ALIASES = {
         { "max_velocity_meters_per_sec" },
@@ -125,7 +50,7 @@ public class JsonUtils {
     private static final Path.DefaultGlobalConstraints FALLBACK_GLOBAL_CONSTRAINTS =
         new Path.DefaultGlobalConstraints(4.5, 7.0, 720.0, 1500.0, 0.03, 2.0, 0.2);
 
-    private static File resolveProjectRoot() {
+    static File projectRoot() {
         try {
             return new File(Filesystem.getDeployDirectory(), "autos");
         } catch (Throwable ignored) {
@@ -160,10 +85,10 @@ public class JsonUtils {
                 fileContent = sb.toString();
             }
 
-            JSONObject json = (JSONObject) new JSONParser().parse(fileContent);
+            JSONObject json = object(new JSONParser().parse(fileContent), "path");
             return buildPathFromJson(json, loadGlobalConstraints(autosDir));
-        } catch (IOException | ParseException e) {
-            throw new RuntimeException("Failed to load path from " + autosDir.getPath() + "/paths/" + pathFileName, e);
+        } catch (IOException | ParseException | RuntimeException e) {
+            throw new IllegalArgumentException(pathFileName + ": " + e.getMessage(), e);
         }
     }
 
@@ -181,15 +106,14 @@ public class JsonUtils {
     /**
      * Loads a path from a JSON file in the default project root directory.
      * 
-     * <p>This is equivalent to calling {@code loadPath(PROJECT_ROOT, pathFileName)}.
+     * <p>This is equivalent to calling {@code loadPath(projectRoot(), pathFileName)}.
      * 
      * @param pathFileName The name of the path file (including .json extension)
      * @return The loaded Path object
      * @throws RuntimeException if the file cannot be read or parsed
-     * @see #PROJECT_ROOT
      */
     public static Path loadPath(String pathFileName) {
-        return loadPath(PROJECT_ROOT, pathFileName);
+        return loadPath(projectRoot(), pathFileName);
     }
 
     /**
@@ -205,38 +129,11 @@ public class JsonUtils {
      */
     public static Path loadPathFromJsonString(String pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         try {
-            JSONObject json = (JSONObject) new JSONParser().parse(pathJson);
+            JSONObject json = object(new JSONParser().parse(pathJson), "path");
             return buildPathFromJson(json, defaultGlobalConstraints);
         } catch (ParseException e) {
             throw new RuntimeException("Failed to parse path JSON string", e);
         }
-    }
-
-    /**
-     * Parses a path JSON object into components without constructing a Path.
-     * 
-     * <p>This method is useful for performance measurements where you want to separate
-     * JSON parsing from Path construction, or when you need to inspect the parsed data
-     * before creating a Path.
-     * 
-     * @param pathJson The JSON object representing the path
-     * @param defaultGlobalConstraints Optional default global constraints (can be null,
-     *                                  in which case constraints will be loaded from config)
-     * @return ParsedPathComponents containing elements, constraints, and globals
-     */
-    public static ParsedPathComponents parsePathComponents(JSONObject pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
-        ArrayList<PathElement> elements = parsePathElements(pathJson);
-        Path.PathConstraints constraints = parsePathConstraints(pathJson);
-        
-        Path.DefaultGlobalConstraints globals = defaultGlobalConstraints;
-        JSONObject globalsJson = (JSONObject) pathJson.get("default_global_constraints");
-        if (globalsJson != null) {
-            globals = parseDefaultGlobalConstraints(globalsJson);
-        } else if (globals == null) {
-            globals = loadGlobalConstraints(PROJECT_ROOT);
-        }
-        
-        return new ParsedPathComponents(elements, constraints, globals);
     }
 
     /**
@@ -257,10 +154,12 @@ public class JsonUtils {
         if (globalsJson != null) {
             globals = parseDefaultGlobalConstraints(globalsJson);
         } else if (globals == null) {
-            globals = loadGlobalConstraints(PROJECT_ROOT);
+            globals = loadGlobalConstraints(projectRoot());
         }
 
-        return new Path(elements, constraints, globals);
+        Path path = new Path(elements, constraints, globals);
+        readHandoffMode(json.get("handoff_mode"), "handoff_mode").ifPresent(path::setHandoffMode);
+        return path;
     }
 
     /**
@@ -277,82 +176,73 @@ public class JsonUtils {
      * @return ArrayList of parsed PathElement objects
      */
     private static ArrayList<PathElement> parsePathElements(JSONObject json) {
-        ArrayList<PathElement> elements = new ArrayList<>();
-        JSONArray pathElementsJson = (JSONArray) json.get("path_elements");
-        if (pathElementsJson == null) {
-            return elements;
+        Object raw = json.get("path_elements");
+        if (!(raw instanceof JSONArray items)) {
+            throw new IllegalArgumentException("path_elements must be an array");
         }
-
-        for (Object obj : pathElementsJson) {
-            if (!(obj instanceof JSONObject)) {
-                continue;
-            }
-            JSONObject elementJson = (JSONObject) obj;
-            String type = (String) elementJson.get("type");
-
-            if ("translation".equals(type)) {
-                double xMeters = ((Number) elementJson.get("x_meters")).doubleValue();
-                double yMeters = ((Number) elementJson.get("y_meters")).doubleValue();
-                Object handoffObj = elementJson.get("intermediate_handoff_radius_meters");
-                Double handoff = handoffObj != null ? ((Number) handoffObj).doubleValue() : null;
-
-                elements.add(new TranslationTarget(
-                    new Translation2d(xMeters, yMeters),
-                    Optional.ofNullable(handoff)
-                ));
-            } else if ("rotation".equals(type)) {
-                double rotationRadians = ((Number) elementJson.get("rotation_radians")).doubleValue();
-                Object tRatioObj = elementJson.get("t_ratio");
-                double tRatio = tRatioObj != null ? ((Number) tRatioObj).doubleValue() : 0.5;
-                Object profiledObj = elementJson.get("profiled_rotation");
-                boolean profiled = profiledObj != null && (Boolean) profiledObj;
-
-                elements.add(new RotationTarget(
-                    Rotation2d.fromRadians(rotationRadians),
-                    tRatio,
-                    profiled
-                ));
-            } else if ("event_trigger".equals(type)) {
-                Object tRatioObj = elementJson.get("t_ratio");
-                double tRatio = tRatioObj != null ? ((Number) tRatioObj).doubleValue() : 0.5;
-                String libKey = (String) elementJson.get("lib_key");
-                if (libKey == null) {
-                    continue;
+        ArrayList<PathElement> elements = new ArrayList<>(items.size());
+        for (int index = 0; index < items.size(); index++) {
+            String context = "element " + (index + 1);
+            JSONObject element = object(items.get(index), context);
+            Object type = element.get("type");
+            if (!(type instanceof String)) throw new IllegalArgumentException(context + ".type must be a string");
+            switch ((String) type) {
+                case "translation" -> elements.add(translation(element, context + ".translation"));
+                case "rotation" -> elements.add(rotation(element, context + ".rotation"));
+                case "event_trigger" -> {
+                    Object key = element.get("lib_key");
+                    if (!(key instanceof String)) throw new IllegalArgumentException(context + ".lib_key must be a string");
+                    elements.add(new EventTrigger(optionalNumber(element, "t_ratio", context).orElse(.5), (String) key));
                 }
-                elements.add(new EventTrigger(tRatio, libKey));
-            } else if ("waypoint".equals(type)) {
-                JSONObject translationJson = (JSONObject) elementJson.get("translation_target");
-                if (translationJson == null) {
-                    continue;
-                }
-                double txMeters = ((Number) translationJson.get("x_meters")).doubleValue();
-                double tyMeters = ((Number) translationJson.get("y_meters")).doubleValue();
-                Object tHandoffObj = translationJson.get("intermediate_handoff_radius_meters");
-                Double tHandoff = tHandoffObj != null ? ((Number) tHandoffObj).doubleValue() : null;
-
-                JSONObject rotationJson = (JSONObject) elementJson.get("rotation_target");
-                if (rotationJson == null) {
-                    continue;
-                }
-                double rotRadians = ((Number) rotationJson.get("rotation_radians")).doubleValue();
-                Object rTRatioObj = rotationJson.get("t_ratio");
-                double rTRatio = rTRatioObj != null ? ((Number) rTRatioObj).doubleValue() : 0.5;
-                Object rProfiledObj = rotationJson.get("profiled_rotation");
-                boolean rProfiled = rProfiledObj != null && (Boolean) rProfiledObj;
-
-                TranslationTarget t = new TranslationTarget(
-                    new Translation2d(txMeters, tyMeters),
-                    Optional.ofNullable(tHandoff)
-                );
-                RotationTarget r = new RotationTarget(
-                    Rotation2d.fromRadians(rotRadians),
-                    rTRatio,
-                    rProfiled
-                );
-                elements.add(new Waypoint(t, r));
+                case "waypoint" -> elements.add(new Waypoint(
+                    translation(object(element.get("translation_target"), context + ".translation_target"), context + ".translation_target"),
+                    rotation(object(element.get("rotation_target"), context + ".rotation_target"), context + ".rotation_target")));
+                default -> throw new IllegalArgumentException(context + ".type is unsupported: " + type);
             }
         }
         return elements;
+    }
+
+    private static TranslationTarget translation(JSONObject json, String context) {
+        return new TranslationTarget(new Translation2d(number(json, "x_meters", context), number(json, "y_meters", context)),
+            optionalNumber(json, "intermediate_handoff_radius_meters", context),
+            readHandoffMode(json.get("handoff_mode"), context + ".handoff_mode"));
+    }
+
+    private static RotationTarget rotation(JSONObject json, String context) {
+        Object profiled = json.get("profiled_rotation");
+        if (profiled != null && !(profiled instanceof Boolean)) {
+            throw new IllegalArgumentException(context + ".profiled_rotation must be a boolean");
+        }
+        return new RotationTarget(Rotation2d.fromRadians(number(json, "rotation_radians", context)),
+            optionalNumber(json, "t_ratio", context).orElse(.5), Boolean.TRUE.equals(profiled));
+    }
+
+    private static JSONObject object(Object value, String context) {
+        if (value instanceof JSONObject json) return json;
+        throw new IllegalArgumentException(context + " must be an object");
+    }
+
+    private static double number(JSONObject json, String key, String context) {
+        Object value = json.get(key);
+        if (value == null) throw new IllegalArgumentException(context + "." + key + " is missing");
+        if (!(value instanceof Number n) || !Double.isFinite(n.doubleValue())) {
+            throw new IllegalArgumentException(context + "." + key + " must be a finite number");
+        }
+        return n.doubleValue();
+    }
+
+    private static Optional<Double> optionalNumber(JSONObject json, String key, String context) {
+        return json.get(key) == null ? Optional.empty() : Optional.of(number(json, key, context));
+    }
+
+    private static Optional<HandoffMode> readHandoffMode(Object value, String context) {
+        if (value == null) return Optional.empty();
+        if (value instanceof String name) {
+            try { return Optional.of(HandoffMode.valueOf(name.toUpperCase(java.util.Locale.ROOT))); }
+            catch (IllegalArgumentException ignored) { /* report with the field context below */ }
+        }
+        throw new IllegalArgumentException(context + " must be radius or progress");
     }
 
     /**
@@ -563,10 +453,14 @@ public class JsonUtils {
                 fileContent = sb.toString();
             }
 
-            JSONObject json = (JSONObject) new JSONParser().parse(fileContent);
-            return parseDefaultGlobalConstraints(json);
-        } catch (IOException | ParseException e) {
-            throw new RuntimeException("Failed to load global constraints from " + autosDir.getPath() + "/config.json", e);
+            JSONObject json = object(new JSONParser().parse(fileContent), "config");
+            Path.DefaultGlobalConstraints defaults = parseDefaultGlobalConstraints(json);
+            Path.setDefaultHandoffMode(readHandoffMode(lookupValueByKeys(
+                getNestedObject(json, "kinematic_constraints"), json, "default_handoff_mode")
+                .orElse(null), "default_handoff_mode").orElse(HandoffMode.RADIUS));
+            return defaults;
+        } catch (IOException | ParseException | RuntimeException e) {
+            throw new IllegalArgumentException("config.json: " + e.getMessage(), e);
         }
     }
 

@@ -345,6 +345,51 @@ class FollowPathTest {
     }
 
     @Test
+    void handoffInheritanceIsResolvedPerRunAndSurvivesCopiesAndTransforms() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
+        Path path = new Path(
+            new Path.TranslationTarget(0, 0),
+            new Path.TranslationTarget(10, 0),
+            new Path.TranslationTarget(20, 0));
+        FollowPathV2 command = createCommand(path, robot);
+        path.clearHandoffMode();
+        Path.setDefaultHandoffMode(HandoffMode.PROGRESS);
+        try {
+            command.initialize();
+            // Changing project settings cannot change the behavior of an already-running path.
+            Path.setDefaultHandoffMode(HandoffMode.RADIUS);
+            Path.setDefaultGlobalConstraints(new Path.DefaultGlobalConstraints(4, 4, 720, 1440, .05, 2, 0));
+            robot.setPose(new Pose2d(9.9, 5, Rotation2d.ZERO));
+            runExecute(command, robot);
+            assertEquals(2, command.getCurrentTranslationElementIndex());
+            command.end(true);
+
+            // Next execution observes current defaults, unlike the preceding snapshot.
+            robot.setPose(new Pose2d());
+            command.initialize();
+            robot.setPose(new Pose2d(9.9, 5, Rotation2d.ZERO));
+            runExecute(command, robot);
+            assertEquals(1, command.getCurrentTranslationElementIndex());
+            command.end(true);
+
+            path.setHandoffMode(HandoffMode.PROGRESS);
+            path.setElement(1, new Path.TranslationTarget(10, 0, .2).withHandoffMode(HandoffMode.RADIUS));
+            path = path.copy().setFlipped(true).setFlipped(false);
+            command = createCommand(path, robot, true);
+            robot.setPose(new Pose2d());
+            command.initialize();
+            robot.setPose(new Pose2d(9.9, 5, Rotation2d.ZERO));
+            runExecute(command, robot);
+            assertEquals(1, command.getCurrentTranslationElementIndex(), "Element override wins over path and project defaults");
+            command.end(true);
+        } finally {
+            Path.setDefaultHandoffMode(HandoffMode.RADIUS);
+            Path.setDefaultGlobalConstraints(TEST_GLOBAL_CONSTRAINTS);
+        }
+    }
+
+    @Test
     void translationAndRotationMustBothBeSatisfiedToFinish() {
         MutableRobot robot = new MutableRobot(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(0.0)));
         FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
@@ -912,7 +957,7 @@ class FollowPathTest {
             new PIDController(5.0, 0.0, 0.0),
             new PIDController(0.0, 0.0, 0.0)
         ).build(path);
-        command.useProgressHandoffs(useTRatioBasedTranslationHandoffs);
+        path.setHandoffMode(useTRatioBasedTranslationHandoffs ? HandoffMode.PROGRESS : HandoffMode.RADIUS);
         return command;
     }
 

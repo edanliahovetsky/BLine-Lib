@@ -190,11 +190,22 @@ public class Path {
         TranslationTarget translationTarget,
         RotationTarget rotationTarget
     ) implements PathElement {
-        /**
-         * Creates a deep copy of this waypoint.
-         * 
-         * @return A new Waypoint with copied translation and rotation targets
-         */
+        /** @return a copy with the specified intermediate handoff mode */
+        public Waypoint withHandoffMode(HandoffMode mode) {
+            return new Waypoint(translationTarget.withHandoffMode(mode), rotationTarget);
+        }
+
+        /** @return a copy inheriting the path/project handoff mode */
+        public Waypoint withoutHandoffMode() {
+            return new Waypoint(translationTarget.withoutHandoffMode(), rotationTarget);
+        }
+
+        /** @return a copy with the specified intermediate handoff distance in metres */
+        public Waypoint withHandoffDistanceMeters(double distance) {
+            return new Waypoint(translationTarget.withHandoffDistanceMeters(distance), rotationTarget);
+        }
+
+        /** @return a new waypoint with copied translation and rotation targets */
         public Waypoint copy() {
             return new Waypoint(translationTarget.copy(), rotationTarget.copy());
         }
@@ -320,15 +331,41 @@ public class Path {
      */
     public static record TranslationTarget(
         Translation2d translation, 
-        Optional<Double> intermediateHandoffRadiusMeters
+        Optional<Double> intermediateHandoffRadiusMeters,
+        Optional<HandoffMode> handoffMode
     ) implements PathElement {
+        public TranslationTarget {
+            java.util.Objects.requireNonNull(translation, "translation");
+            java.util.Objects.requireNonNull(intermediateHandoffRadiusMeters, "handoffDistance");
+            java.util.Objects.requireNonNull(handoffMode, "handoffMode");
+        }
+
+        /** Creates a target with inherited handoff mode. */
+        public TranslationTarget(Translation2d translation, Optional<Double> handoffDistance) {
+            this(translation, handoffDistance, Optional.empty());
+        }
+
+        /** @return a copy with the specified handoff mode */
+        public TranslationTarget withHandoffMode(HandoffMode mode) {
+            return new TranslationTarget(translation, intermediateHandoffRadiusMeters, Optional.of(mode));
+        }
+
+        /** @return a copy inheriting its handoff mode from path/project defaults */
+        public TranslationTarget withoutHandoffMode() {
+            return new TranslationTarget(translation, intermediateHandoffRadiusMeters, Optional.empty());
+        }
+
+        /** @return a copy with the specified handoff distance in metres */
+        public TranslationTarget withHandoffDistanceMeters(double distance) {
+            return new TranslationTarget(translation, Optional.of(distance), handoffMode);
+        }
         /**
          * Creates a copy of this translation target.
          * 
          * @return A new TranslationTarget with the same values
          */
         public TranslationTarget copy() {
-            return new TranslationTarget(translation, intermediateHandoffRadiusMeters);
+            return new TranslationTarget(translation, intermediateHandoffRadiusMeters, handoffMode);
         }
         
         /**
@@ -787,6 +824,25 @@ public class Path {
     private static DefaultGlobalConstraints defaultGlobalConstraints = null;
     private boolean flipped = false;
     private boolean mirrored = false;
+    private Optional<HandoffMode> handoffMode = Optional.empty();
+    private static HandoffMode defaultHandoffMode = HandoffMode.RADIUS;
+
+    /** Sets the project-wide fallback; active followers retain their resolved settings. */
+    public static void setDefaultHandoffMode(HandoffMode mode) {
+        defaultHandoffMode = java.util.Objects.requireNonNull(mode, "mode");
+    }
+
+    /** @return the project-wide default handoff mode */
+    public static HandoffMode getDefaultHandoffMode() { return defaultHandoffMode; }
+
+    /** @return this path, overriding the project default */
+    public Path setHandoffMode(HandoffMode mode) { handoffMode = Optional.of(mode); return this; }
+
+    /** @return this path, inheriting the project default */
+    public Path clearHandoffMode() { handoffMode = Optional.empty(); return this; }
+
+    /** @return this path's optional handoff-mode override */
+    public Optional<HandoffMode> getHandoffMode() { return handoffMode; }
     
     /**
      * Creates a new Path with the specified elements, constraints, and global defaults.
@@ -806,7 +862,7 @@ public class Path {
         }
         if (defaultGlobalConstraints == null) {
             try {
-                defaultGlobalConstraints = JsonUtils.loadGlobalConstraints(JsonUtils.PROJECT_ROOT);
+                defaultGlobalConstraints = JsonUtils.loadGlobalConstraints(JsonUtils.projectRoot());
             } catch (RuntimeException e) {
                 // Allow defaultGlobalConstraints to remain null if loading fails
                 throw new RuntimeException("Failed to load default global constraints", e);
@@ -878,9 +934,10 @@ public class Path {
      * @param pathFileName The name of the path file (without .json extension)
      */
     public Path(File autosDir, String pathFileName) {
-        Path loaded = JsonUtils.loadPath(autosDir, pathFileName+".json");
+        Path loaded = JsonUtils.loadPath(autosDir, pathFileName.endsWith(".json") ? pathFileName : pathFileName + ".json");
         this.pathElements = loaded.pathElements;
         this.pathConstraints = loaded.pathConstraints;
+        this.handoffMode = loaded.handoffMode;
         // globals are static and already copied
 
 
@@ -894,7 +951,26 @@ public class Path {
      * @param pathFileName The name of the path file (without .json extension)
      */
     public Path(String pathFileName) {
-        this(JsonUtils.PROJECT_ROOT, pathFileName);
+        this(JsonUtils.projectRoot(), pathFileName);
+    }
+
+    /**
+     * Loads authored path data from JSON text; executable structure is validated when following.
+     * @param json path JSON text
+     * @param defaults project defaults, or null to load project configuration
+     * @return the authored path
+     */
+    public static Path fromJson(String json, DefaultGlobalConstraints defaults) {
+        return JsonUtils.loadPathFromJsonString(json, defaults);
+    }
+
+    /**
+     * Loads project defaults from config.json, including the project's handoff-mode default.
+     * @param autosDir project directory containing config.json
+     * @return loaded motion constraints
+     */
+    public static DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
+        return JsonUtils.loadGlobalConstraints(autosDir);
     }
 
     /**
@@ -1190,7 +1266,7 @@ public class Path {
      * 
      * @return List of (PathElement, PathElementConstraint) pairs
      */
-    public List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints() {
+    List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints() {
         if (!isValid()) {
             return new ArrayList<>();
         }
@@ -1309,7 +1385,7 @@ public class Path {
      * 
      * @return List of (PathElement, PathElementConstraint) pairs with waypoints expanded
      */
-    public List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints() {
+    List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints() {
         if (!isValid()) {
             return new ArrayList<>();
         }
@@ -1423,14 +1499,14 @@ public class Path {
         for (int i = 0; i < pathElements.size(); i++) {
             PathElement element = pathElements.get(i);
             if (element instanceof TranslationTarget t) {
-                pathElements.set(i, new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters()));
+                pathElements.set(i, new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters(), t.handoffMode()));
             } else if (element instanceof RotationTarget r) {
                 pathElements.set(i, new RotationTarget(heading.apply(r.rotation()), r.t_ratio(), r.profiledRotation()));
             } else if (element instanceof Waypoint w) {
                 TranslationTarget t = w.translationTarget();
                 RotationTarget r = w.rotationTarget();
                 pathElements.set(i, new Waypoint(
-                    new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters()),
+                    new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters(), t.handoffMode()),
                     new RotationTarget(heading.apply(r.rotation()), r.t_ratio(), r.profiledRotation())));
             }
         }
@@ -1602,6 +1678,7 @@ public class Path {
         pathConstraints = source.pathConstraints.copy();
         flipped = source.flipped;
         mirrored = source.mirrored;
+        handoffMode = source.handoffMode;
     }
 
     /**
