@@ -180,6 +180,7 @@ public final class FollowPathV2 extends Command {
         private final Subsystem drive;
         private final FollowerConfig config;
         private BooleanSupplier shouldFlip;
+        private org.wpilib.telemetry.TelemetryTable telemetry;
 
         /**
          * @param driveType drivetrain model required by this robot
@@ -211,6 +212,17 @@ public final class FollowPathV2 extends Command {
             return this;
         }
 
+        /**
+         * Logs the existing BLine signals under this table in subsequently built commands.
+         * Legacy logging callbacks remain available and still receive the same values.
+         * @param table application-owned WPILib telemetry table, or null to disable
+         * @return this builder
+         */
+        public Builder withTelemetry(org.wpilib.telemetry.TelemetryTable table) {
+            telemetry = table;
+            return this;
+        }
+
         /** @return this builder, configured to flip for the red alliance (unknown means unflipped) */
         public Builder withDefaultShouldFlip() {
             return withShouldFlip(FollowerConfig::redAlliance);
@@ -223,7 +235,7 @@ public final class FollowPathV2 extends Command {
          * @return a new independently configurable command
          */
         public FollowPathV2 build(Path path) {
-            return new FollowPathV2(drive, new Follower(path, config, shouldFlip, EVENTS));
+            return new FollowPathV2(drive, new Follower(path, config, shouldFlip, EVENTS).withTelemetry(telemetry));
         }
     }
 

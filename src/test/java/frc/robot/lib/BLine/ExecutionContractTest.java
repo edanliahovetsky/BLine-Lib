@@ -212,4 +212,31 @@ class ExecutionContractTest {
         assertEquals(3, path.getPathElements().size(), "Execution origin must not be appended to the authored path");
         command.end(true);
     }
+
+    @Test void telemetryMigratesExistingSignalsWithoutTakingOverLegacyCallbacksOrLaterCommands() {
+        Robot robot = new Robot();
+        var backend = new org.wpilib.telemetry.MockTelemetryBackend();
+        var table = new org.wpilib.telemetry.TelemetryTable(backend);
+        java.util.Map<String, Double> legacy = new java.util.HashMap<>();
+        Follower.setDoubleLoggingConsumer(value -> legacy.put(value.getFirst(), value.getSecond()));
+        var builder = v2(robot).withTelemetry(table);
+        var path = new Path(new Path.Waypoint(new Pose2d()), new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(90))));
+        var logged = builder.build(path);
+        var silent = builder.withTelemetry(null).build(path);
+        logged.initialize();
+        time += .02;
+        logged.execute();
+        assertEquals(robot.output.omega, backend.getLastValue("FollowPath/outputOmegaRadPerSec", Double.class), 1e-9);
+        assertEquals(legacy.get("FollowPath/remainingPathDistanceMeters"), backend.getLastValue("FollowPath/remainingPathDistanceMeters", Double.class));
+        assertNotNull(backend.getLastAction("FollowPath/pathTranslations"), "Structured geometry must reach the new backend");
+        assertNotNull(backend.getLastAction("FollowPath/closestPoint"));
+        logged.end(true);
+        backend.clear();
+        silent.initialize();
+        time += .02;
+        silent.execute();
+        assertTrue(backend.getActions().isEmpty(), "Builder changes only affect subsequently built commands");
+        assertEquals(2, legacy.get("FollowPath/remainingPathDistanceMeters"), 1e-9);
+        silent.end(true);
+    }
 }

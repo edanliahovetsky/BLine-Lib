@@ -64,22 +64,37 @@ final class Follower {
     private static Consumer<Pair<String, Translation2d[]>> translationListLoggingConsumer = value -> {};
     private static Consumer<Pair<String, Double>> doubleLoggingConsumer = value -> {};
     private static Consumer<Pair<String, Boolean>> booleanLoggingConsumer = value -> {};
+    private org.wpilib.telemetry.TelemetryTable telemetry;
     private final PendingEvents events;
     private PendingEvents.Execution eventExecution;
     private static volatile DoubleSupplier rotationOverrideSupplier = null;
     private static volatile RotationOverrideBehavior rotationOverrideBehavior =
         RotationOverrideBehavior.BYPASS_CONSTRAINTS;
 
-    private static void logDouble(String key, double value) {
+    private void logDouble(String key, double value) {
+        if (telemetry != null) telemetry.log(key, value);
         doubleLoggingConsumer.accept(new Pair<>(key, value));
     }
 
-    private static void logBoolean(String key, boolean value) {
+    private void logBoolean(String key, boolean value) {
+        if (telemetry != null) telemetry.log(key, value);
         booleanLoggingConsumer.accept(new Pair<>(key, value));
     }
 
-    private static void logPose(String key, Pose2d value) {
+    private void logPose(String key, Pose2d value) {
+        if (telemetry != null) telemetry.log(key, value, Pose2d.struct);
         poseLoggingConsumer.accept(new Pair<>(key, value));
+    }
+
+    private void logTranslations(String key, Translation2d[] value) {
+        if (telemetry != null) telemetry.log(key, value, Translation2d.struct);
+        translationListLoggingConsumer.accept(new Pair<>(key, value));
+    }
+
+    Follower withTelemetry(org.wpilib.telemetry.TelemetryTable table) {
+        requireInactive();
+        telemetry = table;
+        return this;
     }
 
     /**
@@ -158,8 +173,7 @@ final class Follower {
      * @param poseLoggingConsumer The consumer to receive pose logging data, or null to disable
      */
     static void setPoseLoggingConsumer(Consumer<Pair<String, Pose2d>> poseLoggingConsumer) {
-        if (poseLoggingConsumer == null) { return; }
-        Follower.poseLoggingConsumer = poseLoggingConsumer;
+        Follower.poseLoggingConsumer = poseLoggingConsumer == null ? value -> {} : poseLoggingConsumer;
     }
 
     /**
@@ -171,8 +185,7 @@ final class Follower {
      * @param translationListLoggingConsumer The consumer to receive translation list data, or null to disable
      */
     static void setTranslationListLoggingConsumer(Consumer<Pair<String, Translation2d[]>> translationListLoggingConsumer) {
-        if (translationListLoggingConsumer == null) { return; }
-        Follower.translationListLoggingConsumer = translationListLoggingConsumer;
+        Follower.translationListLoggingConsumer = translationListLoggingConsumer == null ? value -> {} : translationListLoggingConsumer;
     }
 
     /**
@@ -183,8 +196,7 @@ final class Follower {
      * @param booleanLoggingConsumer The consumer to receive boolean logging data, or null to disable
      */
     static void setBooleanLoggingConsumer(Consumer<Pair<String, Boolean>> booleanLoggingConsumer) {
-        if (booleanLoggingConsumer == null) { return; }
-        Follower.booleanLoggingConsumer = booleanLoggingConsumer;
+        Follower.booleanLoggingConsumer = booleanLoggingConsumer == null ? value -> {} : booleanLoggingConsumer;
     }
 
     /**
@@ -196,8 +208,7 @@ final class Follower {
      * @param doubleLoggingConsumer The consumer to receive double logging data, or null to disable
      */
     static void setDoubleLoggingConsumer(Consumer<Pair<String, Double>> doubleLoggingConsumer) {
-        if (doubleLoggingConsumer == null) { return; }
-        Follower.doubleLoggingConsumer = doubleLoggingConsumer;
+        Follower.doubleLoggingConsumer = doubleLoggingConsumer == null ? value -> {} : doubleLoggingConsumer;
     }
 
     /**
@@ -377,7 +388,7 @@ final class Follower {
             }
         }
         logBoolean("FollowPath/useTRatioBasedTranslationHandoffs", prepared.handoffMode() == HandoffMode.PROGRESS);
-        translationListLoggingConsumer.accept(new Pair<>("FollowPath/pathTranslations", pathTranslations.toArray(Translation2d[]::new)));
+        logTranslations("FollowPath/pathTranslations", pathTranslations.toArray(Translation2d[]::new));
     }
 
     void execute() {
@@ -624,7 +635,7 @@ final class Follower {
                 robotTranslations.subList(0, robotTranslations.size() - 250).clear();
             }
 
-            translationListLoggingConsumer.accept(new Pair<>("FollowPath/robotTranslations", robotTranslations.toArray(Translation2d[]::new)));
+            logTranslations("FollowPath/robotTranslations", robotTranslations.toArray(Translation2d[]::new));
         }
         
         logDouble("FollowPath/remainingPathDistanceMeters", cachedRemainingDistance);
