@@ -11,6 +11,7 @@ final class PendingEvents {
     private static final Logger logger = Logger.getLogger(PendingEvents.class.getName());
     private final Map<String, Runnable> registry = new HashMap<>();
     private final ArrayDeque<Entry> pending = new ArrayDeque<>();
+    private long clearGeneration;
 
     static final class Execution {
         private boolean cancelled;
@@ -41,13 +42,19 @@ final class PendingEvents {
         pending.removeIf(entry -> entry.owner() == owner);
     }
 
-    void clear() { pending.clear(); }
+    void clear() {
+        pending.clear();
+        clearGeneration++;
+    }
 
     void dispatch() {
         // Snapshot the batch: callbacks may enqueue more events, which belong to the next poll.
+        long generation = clearGeneration;
         var batch = new ArrayDeque<>(pending);
         pending.clear();
         for (Entry entry : batch) {
+            // A cleanup action may clear events during this poll, including this detached batch.
+            if (generation != clearGeneration) break;
             if (entry.owner().cancelled) continue;
             try {
                 entry.action().run();

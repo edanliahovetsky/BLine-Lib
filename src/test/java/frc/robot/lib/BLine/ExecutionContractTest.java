@@ -104,6 +104,21 @@ class ExecutionContractTest {
         assertTrue(scheduler.isScheduledOrRunning(surviving));
     }
 
+    @Test void globalCleanupInsideAnEventAlsoClearsTheRestOfThatPoll() {
+        AtomicInteger starts = new AtomicInteger();
+        FollowPath.registerEventTrigger("cleanup-v3", FollowPath::clearPendingEventTriggers);
+        FollowPath.registerEventTrigger("after-cleanup-v3", starts::incrementAndGet);
+        FollowPath path = v3(new Robot()).build(new Path(
+            new Path.EventTrigger(0, "cleanup-v3"),
+            new Path.EventTrigger(0, "after-cleanup-v3"),
+            new Path.TranslationTarget(2, 0)));
+        scheduler.schedule(path);
+        cycle();
+        cycle();
+        assertEquals(0, starts.get(), "Cleanup must suppress queued events even during event dispatch");
+        assertTrue(scheduler.isScheduledOrRunning(path));
+    }
+
     @Test void perCommandOptionsAndDynamicFlipDoNotLeakOrAccumulate() {
         Robot robot = new Robot();
         AtomicBoolean flip = new AtomicBoolean(true);
