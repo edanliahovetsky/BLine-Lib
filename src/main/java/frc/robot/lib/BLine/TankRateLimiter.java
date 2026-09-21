@@ -5,21 +5,20 @@ package frc.robot.lib.BLine;
  *
  * <p>With linear ramps v(t) and omega(t), the centre's field acceleration is
  * sqrt(a² + (v(t) omega(t))²). At a fixed next omega, the permissible forward
- * accelerations form an interval. The endpoints come from quadratic bounds;
- * a convex interval search includes any interior peak. A bounded angular search
- * then chooses the feasible turn rate closest to the PID request, with forward
- * speed as the tie breaker. No mixed-unit cost or trajectory is involved.
+ * accelerations form an interval containing zero. Choose the reachable turn
+ * rate closest to the prepared request, then approach the requested forward
+ * acceleration from the feasible side of that interval. No angular search,
+ * mixed-unit cost or trajectory is involved.
  */
 final class TankRateLimiter {
     private static final double EPSILON = 1e-9;
-    private static final int SAMPLES = 32;
-    private static final int BISECTIONS = 40;
+    // Acceleration uncertainty, in m/s²; also capped at 1% for gentle limits.
+    private static final double ACCELERATION_PRECISION = 0.02;
+    private static final int MAX_BISECTIONS = 16;
 
     record Velocity(double forward, double omega) {}
     record Limits(double acceleration, double angularAcceleration, double speed, double omega) {}
     record Result(Velocity velocity, boolean recovering) {}
-    private record Interval(double low, double high) {}
-    private record Candidate(double forward, double omega, double turnError, double speedError) {}
 
     private TankRateLimiter() {}
 
@@ -51,104 +50,41 @@ final class TankRateLimiter {
         double scale = magnitude > limits.acceleration ? limits.acceleration / magnitude : 1;
         double targetForward = current.forward + scale * a * dt;
         double targetOmega = scale * turnRequest;
-        Limits reachable = new Limits(acceleration, limits.angularAcceleration, speed, turnRate);
         double low = Math.max(-turnRate, current.omega - limits.angularAcceleration * dt);
         double high = Math.min(turnRate, current.omega + limits.angularAcceleration * dt);
 
-        Candidate best = candidate(current, targetForward, targetOmega, Math.clamp(targetOmega, low, high), reachable, dt, direction);
-        best = better(best, candidate(current, targetForward, targetOmega, current.omega, reachable, dt, direction));
-        if (low <= 0 && high >= 0) best = better(best, candidate(current, targetForward, targetOmega, 0, reachable, dt, direction));
-        double spacing = (high - low) / SAMPLES;
-        for (int i = 0; i <= SAMPLES; i++) {
-            best = better(best, candidate(current, targetForward, targetOmega, low + spacing * i, reachable, dt, direction));
-        }
-        // Refine around the best sampled feasible point. A fixed iteration count
-        // gives reproducible work independent of roboRIO or desktop runner speed.
-        for (int refinement = 0; best != null && refinement < 8; refinement++) {
-            double centre = best.omega;
-            spacing /= 2;
-            best = better(best, candidate(current, targetForward, targetOmega, Math.max(low, centre - spacing), reachable, dt, direction));
-            best = better(best, candidate(current, targetForward, targetOmega, Math.min(high, centre + spacing), reachable, dt, direction));
-        }
-        // Holding the current state is feasible under the recovery envelope.
-        // Failure therefore indicates invalid arithmetic/inputs, not permission
-        // to emit an unconstrained command.
-        if (best == null) throw new IllegalStateException("No finite tank velocity transition");
-        return new Result(new Velocity(best.forward, best.omega), recovering);
-    }
-
-    private static Candidate candidate(Velocity current, double targetForward, double targetOmega,
-            double omega, Limits limits, double dt, DriveDirection direction) {
-        Interval interval = interval(current, omega, limits, dt);
-        if (interval == null) return null;
-        double low = current.forward + interval.low * dt;
-        double high = current.forward + interval.high * dt;
+        double omega = Math.clamp(targetOmega, low, high);
+        double forward = Math.clamp(targetForward, -speed, speed);
         // Existing opposite-direction motion may brake; it may not grow.
-        if (direction == DriveDirection.FORWARD) low = Math.max(low, Math.min(0, current.forward));
-        else high = Math.min(high, Math.max(0, current.forward));
-        if (low > high + EPSILON) return null;
-        if (low > high) low = high = (low + high) / 2;
-        double forward = Math.clamp(targetForward, low, high);
-        return new Candidate(forward, omega, Math.abs(omega - targetOmega), Math.abs(forward - targetForward));
-    }
-
-    private static Candidate better(Candidate left, Candidate right) {
-        if (right == null) return left;
-        if (left == null || right.turnError < left.turnError - EPSILON
-            || (Math.abs(right.turnError - left.turnError) <= EPSILON && right.speedError < left.speedError)) return right;
-        return left;
-    }
-
-    private static Interval interval(Velocity current, double omega, Limits limits, double dt) {
+        if (direction == DriveDirection.FORWARD) forward = Math.max(forward, Math.min(0, current.forward));
+        else forward = Math.min(forward, Math.max(0, current.forward));
         double alpha = (omega - current.omega) / dt;
-        double low = Math.max(-limits.acceleration, (-limits.speed - current.forward) / dt);
-        double high = Math.min(limits.acceleration, (limits.speed - current.forward) / dt);
-        // Acceleration budget at t=0 and t=dt. Each yields a quadratic in a.
-        for (double t : new double[] {0, dt}) {
-            double w = current.omega + alpha * t;
-            double qa = 1 + w * w * t * t;
-            double qb = 2 * w * w * current.forward * t;
-            double qc = Math.pow(w * current.forward, 2) - limits.acceleration * limits.acceleration;
-            double discriminant = qb * qb - 4 * qa * qc;
-            if (discriminant < -EPSILON) return null;
-            double root = Math.sqrt(Math.max(0, discriminant));
-            low = Math.max(low, (-qb - root) / (2 * qa));
-            high = Math.min(high, (-qb + root) / (2 * qa));
-        }
-        if (low > high + EPSILON) return null;
-        if (low > high) low = high = (low + high) / 2;
-        double anchor = (low + high) / 2;
-        if (inside(current, low, alpha, dt, limits.acceleration)) anchor = low;
-        else if (inside(current, high, alpha, dt, limits.acceleration)) anchor = high;
-        else if (!inside(current, anchor, alpha, dt, limits.acceleration)) {
-            double l = low, h = high;
-            for (int i = 0; i < BISECTIONS; i++) {
-                double x = l + (h - l) / 3, y = h - (h - l) / 3;
-                if (peakAcceleration(current, x, alpha, dt) < peakAcceleration(current, y, alpha, dt)) h = y;
-                else l = x;
+        double requestedAcceleration = (forward - current.forward) / dt;
+
+        // Request preparation guarantees |v0 * targetOmega| <= A. Angular slew
+        // keeps omega between that target and the current rate, so holding v0
+        // is feasible throughout the step under the recovery envelope. This is
+        // already the closest reachable turn rate; searching others cannot
+        // improve the turn-priority objective.
+        if (!inside(current, requestedAcceleration, alpha, dt, acceleration)) {
+            if (!inside(current, 0, alpha, dt, acceleration)) {
+                throw new IllegalStateException("No finite tank velocity transition");
             }
-            anchor = (l + h) / 2;
-            if (!inside(current, anchor, alpha, dt, limits.acceleration)) return null;
-        }
-        if (!inside(current, low, alpha, dt, limits.acceleration)) {
-            double l = low, h = anchor;
-            for (int i = 0; i < BISECTIONS; i++) {
-                double mid = (l + h) / 2;
-                if (inside(current, mid, alpha, dt, limits.acceleration)) h = mid;
-                else l = mid;
+            // For fixed omega(t), a² + ((v0 + a*t) * omega(t))² is convex in a
+            // at every t. Its feasible intersection contains zero, so bisect
+            // only toward the requested acceleration, keeping the feasible end.
+            // Primitive locals avoid allocating objects for search candidates.
+            double feasible = 0, infeasible = 1;
+            double precision = Math.min(ACCELERATION_PRECISION, 0.01 * limits.acceleration);
+            for (int i = 0; i < MAX_BISECTIONS
+                    && Math.abs(requestedAcceleration) * (infeasible - feasible) > precision; i++) {
+                double fraction = (feasible + infeasible) / 2;
+                if (inside(current, requestedAcceleration * fraction, alpha, dt, acceleration)) feasible = fraction;
+                else infeasible = fraction;
             }
-            low = h;
+            forward = current.forward + requestedAcceleration * feasible * dt;
         }
-        if (!inside(current, high, alpha, dt, limits.acceleration)) {
-            double l = anchor, h = high;
-            for (int i = 0; i < BISECTIONS; i++) {
-                double mid = (l + h) / 2;
-                if (inside(current, mid, alpha, dt, limits.acceleration)) l = mid;
-                else h = mid;
-            }
-            high = l;
-        }
-        return new Interval(low, high);
+        return new Result(new Velocity(forward, omega), recovering);
     }
 
     private static boolean inside(Velocity current, double a, double alpha, double dt, double maximum) {

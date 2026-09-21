@@ -8,10 +8,11 @@ class TankRateLimiterTest {
     @Test
     void boundsTheWholeStepWhileSteeringAndBrakingInEitherDirection() {
         Random random = new Random(2027);
-        var limits = new TankRateLimiter.Limits(2, 4, 3.5, 2.5);
-        for (int trial = 0; trial < 500; trial++) {
+        for (int trial = 0; trial < 1000; trial++) {
+            double budget = random.nextDouble(0.01, 10);
+            var limits = new TankRateLimiter.Limits(budget, 4, 3.5, 2.5);
             double v = random.nextDouble(-3.5, 3.5);
-            double maxW = Math.min(2.5, 2 / Math.max(1e-9, Math.abs(v)));
+            double maxW = Math.min(2.5, budget / Math.max(1e-9, Math.abs(v)));
             double w = random.nextDouble(-maxW, maxW);
             var current = new TankRateLimiter.Velocity(v, w);
             var request = new TankRateLimiter.Velocity(random.nextDouble(-5, 5), random.nextDouble(-8, 8));
@@ -32,8 +33,53 @@ class TankRateLimiterTest {
                 double fraction = sample / 100.0;
                 double atV = v + (nextV - v) * fraction;
                 double atW = w + (nextW - w) * fraction;
-                assertTrue(Math.hypot(acceleration, atV * atW) <= 2 + 1e-7, "Full-step acceleration budget");
+                assertTrue(Math.hypot(acceleration, atV * atW) <= budget + 1e-7, "Full-step acceleration budget");
             }
+        }
+    }
+
+    @Test
+    void approachesTheAccelerationBoundaryFromBelowWithinUsefulPrecision() {
+        // Almost constant turn rate with increasing speed: the maximum occurs
+        // at the end of the step. Solve that quadratic independently, so an
+        // over-conservative limiter (including always holding speed) fails too.
+        double dt = 0.02;
+        for (double budget : new double[] {0.05, 0.5, 2, 10}) {
+            for (DriveDirection direction : DriveDirection.values()) {
+                double sign = direction == DriveDirection.FORWARD ? 1 : -1;
+                double speed = Math.sqrt(budget), omega = speed / 2;
+                var current = new TankRateLimiter.Velocity(sign * speed, omega);
+                var limits = new TankRateLimiter.Limits(budget, 1e-8, 100, 100);
+                var result = TankRateLimiter.limit(current, new TankRateLimiter.Velocity(sign * 100, omega),
+                    limits, dt, direction).velocity();
+                double w = result.omega();
+                double qa = 1 + w * w * dt * dt;
+                double qb = 2 * w * w * speed * dt;
+                double qc = w * w * speed * speed - budget * budget;
+                double optimum = (-qb + Math.sqrt(qb * qb - 4 * qa * qc)) / (2 * qa);
+                double actual = sign * (result.forward() - current.forward()) / dt;
+                assertTrue(actual <= optimum + 1e-8, "Stay on the feasible side of the boundary");
+                assertTrue(optimum - actual <= Math.min(0.02, budget * 0.01) + 1e-8,
+                    "Boundary uncertainty must respect both absolute and relative precision");
+            }
+        }
+    }
+
+    @Test
+    void freesCorneringCapacityBeforeBrakingIntoATighterTurn() {
+        for (DriveDirection direction : DriveDirection.values()) {
+            double sign = direction == DriveDirection.FORWARD ? 1 : -1;
+            var current = new TankRateLimiter.Velocity(sign * 2, 1);
+            var request = new TankRateLimiter.Velocity(sign * 2, 2);
+            var limits = new TankRateLimiter.Limits(2, 4, 3.5, 2.5);
+            var first = TankRateLimiter.limit(current, request, limits, 0.02, direction).velocity();
+            assertEquals(current.forward(), first.forward(), 1e-8, "No braking budget at the initial boundary");
+            assertTrue(first.omega() < current.omega(), "Free lateral capacity instead of remaining in an orbit");
+            for (int step = 0; step < 300; step++) {
+                current = TankRateLimiter.limit(current, request, limits, 0.02, direction).velocity();
+            }
+            assertEquals(sign, current.forward(), 0.02);
+            assertEquals(2, current.omega(), 0.02);
         }
     }
 
