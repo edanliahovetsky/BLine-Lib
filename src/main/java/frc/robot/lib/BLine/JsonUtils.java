@@ -159,6 +159,12 @@ final class JsonUtils {
 
         Path path = new Path(elements, constraints, globals);
         readHandoffMode(json.get("handoff_mode"), "handoff_mode").ifPresent(path::setHandoffMode);
+        if (json.containsKey("tank_drive_direction")) {
+            Object direction = json.get("tank_drive_direction");
+            if ("forward".equals(direction)) path.setTankDriveDirection(DriveDirection.FORWARD);
+            else if ("backward".equals(direction)) path.setTankDriveDirection(DriveDirection.BACKWARD);
+            else throw new IllegalArgumentException("tank_drive_direction: expected \"forward\" or \"backward\", received " + direction);
+        }
         return path;
     }
 

@@ -47,16 +47,91 @@ class ExecutionContractTest {
 
     private void cycle() { time += .02; scheduler.run(); }
 
-    private FollowPath.Builder v3(Robot robot) {
-        return new FollowPath.Builder(DriveType.SWERVE, robot.mechanism, () -> robot.pose, robot::reset,
+    private FollowPath.Builder v3(Robot robot) { return v3(robot, DriveType.SWERVE); }
+    private FollowPath.Builder v3(Robot robot, DriveType driveType) {
+        return new FollowPath.Builder(driveType, robot.mechanism, () -> robot.pose, robot::reset,
             ChassisVelocities::new, value -> robot.output = value,
             new PIDController(3, 0, 0), new PIDController(3, 0, 0), new PIDController(1, 0, 0));
     }
 
-    private FollowPathV2.Builder v2(Robot robot) {
-        return new FollowPathV2.Builder(DriveType.SWERVE, robot.subsystem, () -> robot.pose, robot::reset,
+    private FollowPathV2.Builder v2(Robot robot) { return v2(robot, DriveType.SWERVE); }
+    private FollowPathV2.Builder v2(Robot robot, DriveType driveType) {
+        return new FollowPathV2.Builder(driveType, robot.subsystem, () -> robot.pose, robot::reset,
             ChassisVelocities::new, value -> robot.output = value,
             new PIDController(3, 0, 0), new PIDController(3, 0, 0), new PIDController(1, 0, 0));
+    }
+
+    /** The adapters have different lifecycle APIs; assertions use only their public commands. */
+    private record Run(Runnable start, Runnable step, Runnable stop) {}
+
+    private Run run(FollowPath command) {
+        return new Run(() -> { scheduler.schedule(command); cycle(); }, this::cycle,
+            () -> { scheduler.cancel(command); cycle(); });
+    }
+
+    private Run run(FollowPathV2 command) {
+        return new Run(command::initialize, () -> { time += .02; command.execute(); }, () -> command.end(true));
+    }
+
+    @Test void savedTankDirectionIsSnapshottedPerRunWithCommandLocalOverridesInBothFrameworks() {
+        for (boolean commandsV3 : new boolean[] {false, true}) {
+            Robot robot = new Robot();
+            Path path = new Path(new Path.TranslationTarget(3, 0));
+            var builderV2 = v2(robot, DriveType.TANK);
+            var builderV3 = v3(robot, DriveType.TANK);
+            Run inherited = commandsV3 ? run(builderV3.build(path)) : run(builderV2.build(path));
+            Run backward = commandsV3
+                ? run(builderV3.build(path).withTankDriveDirection(DriveDirection.BACKWARD))
+                : run(builderV2.build(path).withTankDriveDirection(DriveDirection.BACKWARD));
+            Run forward = commandsV3
+                ? run(builderV3.build(path).withTankDriveDirection(DriveDirection.FORWARD))
+                : run(builderV2.build(path).withTankDriveDirection(DriveDirection.FORWARD));
+            Run laterBuild = commandsV3 ? run(builderV3.build(path)) : run(builderV2.build(path));
+            assertEquals(DriveDirection.FORWARD, path.getTankDriveDirection());
+            inherited.start.run(); inherited.step.run();
+            assertTrue(robot.output.vx > 0, "Missing direction defaults to Forward");
+            path.setTankDriveDirection(DriveDirection.BACKWARD);
+            inherited.step.run();
+            assertTrue(robot.output.vx > 0, "Changing the source cannot alter an active execution");
+            inherited.stop.run();
+            inherited.start.run(); inherited.step.run();
+            assertTrue(robot.output.vx < 0, "The same command picks up source changes on its next run");
+            inherited.stop.run();
+            forward.start.run(); forward.step.run();
+            assertTrue(robot.output.vx > 0, "An explicit Forward overrides a saved Backward");
+            forward.stop.run();
+            assertEquals(DriveDirection.BACKWARD, path.getTankDriveDirection());
+            path.setTankDriveDirection(DriveDirection.FORWARD);
+            backward.start.run(); backward.step.run();
+            assertTrue(robot.output.vx < 0, "An explicit Backward overrides a saved Forward");
+            backward.stop.run();
+            assertEquals(DriveDirection.FORWARD, path.getTankDriveDirection());
+            laterBuild.start.run(); laterBuild.step.run();
+            assertTrue(robot.output.vx > 0, "Overrides must not reconfigure the builder or another command");
+            laterBuild.stop.run();
+        }
+    }
+
+    @Test void holonomicFollowersIgnoreSavedTankDirectionButRejectExplicitBackwardBeforeReset() {
+        for (DriveType type : new DriveType[] {DriveType.SWERVE, DriveType.MECANUM}) {
+            for (boolean commandsV3 : new boolean[] {false, true}) {
+                Robot robot = new Robot();
+                Path path = new Path(new Path.Waypoint(new Pose2d()), new Path.TranslationTarget(3, 0))
+                    .setTankDriveDirection(DriveDirection.BACKWARD);
+                Run saved = commandsV3 ? run(v3(robot, type).build(path).withPoseReset())
+                    : run(v2(robot, type).build(path).withPoseReset());
+                saved.start.run(); saved.step.run();
+                assertTrue(robot.output.vx > 0);
+                assertEquals(1, robot.resets);
+                saved.stop.run();
+                Run explicit = commandsV3 ? run(v3(robot, type).build(path).withPoseReset().withTankDriveDirection(DriveDirection.BACKWARD))
+                    : run(v2(robot, type).build(path).withPoseReset().withTankDriveDirection(DriveDirection.BACKWARD));
+                explicit.start.run(); explicit.step.run();
+                assertEquals(0, robot.output.vx);
+                assertEquals(1, robot.resets, "Invalid overrides must fail before resetting pose");
+                explicit.stop.run();
+            }
+        }
     }
 
     @Test void finalEventRunsAfterV3FollowerAndItsParentComplete() {

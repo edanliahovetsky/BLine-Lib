@@ -825,12 +825,28 @@ public class Path {
     private boolean flipped = false;
     private boolean mirrored = false;
     private Optional<HandoffMode> handoffMode = Optional.empty();
+    private DriveDirection tankDriveDirection = DriveDirection.FORWARD;
     private static HandoffMode defaultHandoffMode = HandoffMode.RADIUS;
 
     /** Sets the project-wide fallback; active followers retain their resolved settings. */
     public static void setDefaultHandoffMode(HandoffMode mode) {
         defaultHandoffMode = java.util.Objects.requireNonNull(mode, "mode");
     }
+
+    /**
+     * Selects the default travel direction for tank followers of this path.
+     * Backward means rear-first travel in the same element order; headings and pose reset are unchanged.
+     * Active executions retain their snapshot. Holonomic followers ignore this property.
+     * @param direction forward or backward travel (not null)
+     * @return this path
+     */
+    public Path setTankDriveDirection(DriveDirection direction) {
+        tankDriveDirection = java.util.Objects.requireNonNull(direction, "direction");
+        return this;
+    }
+
+    /** @return this path's tank travel direction; forward for paths without a saved direction */
+    public DriveDirection getTankDriveDirection() { return tankDriveDirection; }
 
     /** @return the project-wide default handoff mode */
     public static HandoffMode getDefaultHandoffMode() { return defaultHandoffMode; }
@@ -938,6 +954,7 @@ public class Path {
         this.pathElements = loaded.pathElements;
         this.pathConstraints = loaded.pathConstraints;
         this.handoffMode = loaded.handoffMode;
+        this.tankDriveDirection = loaded.tankDriveDirection;
         // globals are static and already copied
 
 
@@ -1683,6 +1700,7 @@ public class Path {
         flipped = source.flipped;
         mirrored = source.mirrored;
         handoffMode = source.handoffMode;
+        tankDriveDirection = source.tankDriveDirection;
     }
 
     /**

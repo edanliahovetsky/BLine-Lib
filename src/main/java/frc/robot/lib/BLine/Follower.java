@@ -277,6 +277,7 @@ final class Follower {
     }
 
     private final DriveType driveType;
+    private java.util.Optional<DriveDirection> directionOverride = java.util.Optional.empty();
     private DriveDirection direction = DriveDirection.FORWARD;
 
     Follower(Path path, FollowerConfig config, BooleanSupplier shouldFlip, PendingEvents events) {
@@ -296,7 +297,7 @@ final class Follower {
 
     void withTankDriveDirection(DriveDirection direction) {
         requireInactive();
-        this.direction = Objects.requireNonNull(direction, "direction");
+        directionOverride = java.util.Optional.of(Objects.requireNonNull(direction, "direction"));
     }
 
     void withShouldFlip(BooleanSupplier supplier) {
@@ -327,7 +328,7 @@ final class Follower {
         eventExecution = new PendingEvents.Execution();
         pathElementsWithConstraints = new ArrayList<>();
         cachedRemainingDistance = 0.0;
-        if (driveType != DriveType.TANK && direction != DriveDirection.FORWARD) {
+        if (driveType != DriveType.TANK && directionOverride.orElse(DriveDirection.FORWARD) == DriveDirection.BACKWARD) {
             logger.warning("FollowPath: BACKWARD tank drive direction requires DriveType.TANK");
             return;
         }
@@ -341,6 +342,8 @@ final class Follower {
             return;
         }
         path = prepared.path();
+        direction = driveType == DriveType.TANK
+            ? directionOverride.orElse(path.getTankDriveDirection()) : DriveDirection.FORWARD;
         executionDefaults = prepared.defaults();
         endTranslationTolerance = prepared.translationTolerance();
         endRotationTolerance = prepared.rotationToleranceDegrees();

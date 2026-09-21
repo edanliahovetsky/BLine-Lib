@@ -1,115 +1,58 @@
-# BLine-Lib for WPILib 2027 Alpha 6
+# BLine-Lib 2027 beta
 
-The `wpilib-2027` branch adapts BLine-Lib 0.9.1 to
-WPILib `2027.0.0-alpha-6` and Java 25. It is a compatibility line for the same
-BLine path behavior, not an independent feature fork. The stable, default
-release line remains [`main`](https://github.com/edanliahovetsky/BLine-Lib)
-for WPILib 2026.
+This development candidate targets WPILib `2027.0.0-alpha-7` and Java 25.
+It is pending manual review and distribution. The stable WPILib 2026 release
+remains on [`main`](https://github.com/edanliahovetsky/BLine-Lib).
 
-This line uses **Commands v2 only**. Commands v3 is not supported.
+## Command interfaces
 
-## Install the Tagged candidate
+Use `FollowPath.Builder` with a Commands v3 `Mechanism`, or
+`FollowPathV2.Builder` with a Commands v2 `Subsystem`. Both accept the robot's
+`DriveType`, pose supplier, pose-reset callback, measured robot-relative
+velocity supplier, robot-relative output callback, and translation, rotation,
+and cross-track `PIDController` instances, in that order.
 
-The current vendordep resolves the immutable Tagged candidate
-`v0.9.1-wpilib2027.alpha06.01`. This candidate is available for exact public
-installation and Human acceptance, but it is not yet a GitHub Formal Release.
+The adapters share the same follower behavior and options. Install the command
+framework your robot uses; BLine compiles against both without adding either
+framework as a runtime dependency. WPILib 2027 imports use `org.wpilib`.
 
-1. Remove the stable BLine vendordep and any Commands v3 vendordep from the
-   robot project.
-2. In WPILib VS Code, run **WPILib: Manage Vendor Libraries** and choose
-   **Install new libraries (online)**.
-3. Install this compatibility manifest:
+## Tank driving direction
 
-   ```text
-   https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json
-   ```
+The editor's **Drive forward** / **Drive backward** arrow buttons save the path's
+robot driving direction. Preview and generation use that same direction.
+Exported path JSON includes:
 
-4. Confirm the project resolves BLine-Lib and
-   `org.wpilib.commandsv2:commandsv2-java:2027.0.0-alpha-6`, then compile the
-   robot project.
+```json
+"tank_drive_direction": "backward"
+```
 
-The manifest declares `wpilibYear` as `2027_alpha5`. That is the WPILib tooling
-identifier and local installation directory used by the Alpha 6 release; it
-does not mean BLine targets WPILib Alpha 5. The 2026 and 2027 manifests retain
-the same BLine UUID, so WPILib treats them as the same library and they cannot
-coexist in one robot project.
+Older paths without the property default to Forward. The editor migrates an
+older `preview.tank_direction` setting when the new property is absent, removing
+that duplicate metadata value. The ghost starting pose remains private editor
+metadata.
 
-The current manifest resolves BLine-Lib from exact immutable tag
-`v0.9.1-wpilib2027.alpha06.01`. A separate Human acceptance pass installs this
-same tagged vendordep in a pristine project before any GitHub Formal Release is
-authorized.
-
-## Migrate from the stable line
-
-Keep the same path JSON, BLine constraints, field-flipping choices, and
-Commands v2 scheduling model. The compatibility work preserves BLine-owned
-behavior and defaults; it does not add compatibility features or deliberate
-behavior changes.
-
-WPILib 2027 moves Java packages from `edu.wpi.first` to `org.wpilib`. Update
-your robot-project WPILib imports accordingly. For example:
+With either command builder:
 
 ```java
-import org.wpilib.math.controller.PIDController;
-import org.wpilib.command2.Command;
+builder.build(path); // Use the direction saved in the path.
+builder.build(path).withTankDriveDirection(DriveDirection.FORWARD);
+builder.build(path).withTankDriveDirection(DriveDirection.BACKWARD);
 ```
 
-BLine's public package remains `frc.robot.lib.BLine`. Review compiler errors
-for other upstream WPILib type or package changes in your robot code, and keep
-the robot project on Java 25.
+For programmatic paths:
 
-## Compatibility versioning
-
-Compatibility releases retain the shared BLine base version and add a
-zero-padded WPILib alpha and compatibility revision:
-
-```text
-v0.9.1-wpilib2027.alpha06.01       immutable Git tag
-0.9.1-wpilib2027.alpha06.01        vendordep version
+```java
+path.setTankDriveDirection(DriveDirection.BACKWARD);
+DriveDirection direction = path.getTankDriveDirection();
 ```
 
-The leading `v` is omitted from the vendordep version because WPILib compares
-that field as a version. A compatibility-only rebuild increments the final
-two-digit revision. A later WPILib alpha increments the two-digit alpha field.
-Failed candidate tags remain immutable, so a retry receives the next revision.
+Each execution snapshots the path and resolves the command override first,
+then the saved direction. Reusing a command without an override picks up source
+`Path` changes on the next execution. Files are not reread automatically, and
+an active run keeps its direction. Overrides never mutate the path, builder,
+or another command.
 
-Alpha and beta GitHub Releases are prereleases. A tag, JitPack build, or
-development-branch push alone is not a Formal Release.
-
-## Validation evidence
-
-Both maintained lines run parity tests through BLine's public API using real
-path JSON and the real Commands v2 scheduler. The coverage includes field
-geometry and flipping, constraints, and defaults. GitHub Actions also runs
-`build publishToMavenLocal` on pushes and pull requests: Java 17 with WPILib
-2026 on `main`, and Java 25 with WPILib Alpha 6 on `wpilib-2027`. These
-informational workflows are not required protection checks.
-
-The pre-publication compatibility dependency was compiled from exact source
-commit `4dd378b77a0ec73d4c89efb752756728d138801a` in a clean consumer with no Maven
-Local, composite build, or project dependency. A local-only real WPILib 2027
-RobotCode project then loaded a deployed BLine path and scheduled `FollowPath`
-with Commands v2. Its final deterministic run passed all five numeric
-assertions: DriverStation autonomous-enabled, finite output, overall verdict,
-endpoint error `0.038710 m` within the `0.08 m` limit, and stopped output
-exactly `0`. It recorded 82 samples over 1.592 seconds. The Tagged candidate is
-verified separately through its exact public coordinate before Human
-acceptance.
-
-## Validation limits
-
-The RobotCode harness integrates commanded chassis velocity into pose feedback
-at a fixed 20 ms step. It proves that the real dependency installs, a real path
-loads, Commands v2 schedules BLine, finite output reaches the endpoint within
-the timeout, and output stops afterward.
-
-It does **not** model drivetrain or module dynamics, traction, latency, sensor
-noise, closed-loop drivetrain controllers, Systemcore hardware, or a physical
-robot. It is not drivetrain-performance or real-robot validation.
-
-## Documentation and artifacts
-
-The generated BLine documentation site and published Pages Javadocs remain the
-stable WPILib 2026 documentation surface. Compatibility artifacts still include
-their Java 25 sources and Javadoc jars so the exact compatibility API can be
-inspected without replacing the stable site.
+Backward means rear-first travel through the same element order. Authored
+headings, transforms, and pose-reset behavior are unchanged. Swerve and mecanum
+ignore the saved tank-specific property; explicitly requesting Backward on a
+holonomic command is an invalid configuration.

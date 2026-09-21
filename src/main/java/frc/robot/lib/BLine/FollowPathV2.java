@@ -266,8 +266,12 @@ public final class FollowPathV2 extends Command {
     public FollowPathV2 withShouldMirror(BooleanSupplier supplier) { follower.withShouldMirror(supplier); return this; }
 
     /**
-     * Selects which end of a tank robot leads along the path. Backward is invalid for holonomic
-     * drive types and is rejected before pose reset or events.
+     * Overrides this command's saved path direction. Without an override, each execution uses
+     * the current source path's direction (forward when absent). Resolution happens once at
+     * execution start; this method never changes the path or builder. Backward is rear-first
+     * travel in the same element order, without changing headings, transforms, or pose reset.
+     * An explicit backward override is invalid for holonomic drive types and is rejected before
+     * pose reset or events; a saved tank-specific direction is simply ignored by those followers.
      * @param direction forward or backward travel
      * @return this command
      */

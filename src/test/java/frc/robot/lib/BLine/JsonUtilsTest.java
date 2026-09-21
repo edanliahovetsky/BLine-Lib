@@ -18,6 +18,32 @@ class JsonUtilsTest {
     java.nio.file.Path tempDir;
 
     @Test
+    void publicLoaderReadsTankDirectionWithLegacyFallbackAndContextualErrors() throws IOException {
+        writeConfig("{}");
+        Files.createDirectories(tempDir.resolve("paths"));
+        var file = tempDir.resolve("paths/Score Left.json");
+        String elements = "\"path_elements\":[{\"type\":\"waypoint\",\"translation_target\":{\"x_meters\":1,\"y_meters\":2},\"rotation_target\":{\"rotation_radians\":0.7}}]";
+        Files.writeString(file, "{" + elements + "}");
+        assertEquals(DriveDirection.FORWARD, new Path(tempDir.toFile(), "Score Left").getTankDriveDirection());
+        Files.writeString(file, "{\"tank_drive_direction\":\"backward\"," + elements + "}");
+        Path backward = new Path(tempDir.toFile(), "Score Left");
+        assertEquals(DriveDirection.BACKWARD, backward.getTankDriveDirection());
+        assertEquals(.7, ((Path.Waypoint) backward.getPathElements().getFirst()).rotationTarget().rotation().getRadians(), 1e-9);
+        Path transformed = backward.copy().setFlipped(true).setMirrored(true);
+        assertEquals(DriveDirection.BACKWARD, transformed.getTankDriveDirection());
+        transformed.setTankDriveDirection(DriveDirection.FORWARD);
+        assertEquals(DriveDirection.BACKWARD, backward.getTankDriveDirection());
+        Files.writeString(file, "{\"tank_drive_direction\":\"forward\"," + elements + "}");
+        assertEquals(DriveDirection.FORWARD, new Path(tempDir.toFile(), "Score Left").getTankDriveDirection());
+        assertEquals(DriveDirection.BACKWARD, backward.getTankDriveDirection(), "Loaded paths do not reread their files");
+        for (String invalid : new String[] {"\"reverse\"", "\"FORWARD\"", "null", "false", "1", "{}"}) {
+            Files.writeString(file, "{\"tank_drive_direction\":" + invalid + "," + elements + "}");
+            var error = assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Score Left"));
+            assertTrue(error.getMessage().contains("Score Left.json: tank_drive_direction"), error.getMessage());
+        }
+    }
+
+    @Test
     void publicLoaderPreservesHandoffOverridesAndIdentifiesMalformedFields() throws IOException {
         writeConfig("{\"kinematic_constraints\":{\"default_handoff_mode\":\"progress\"}}");
         Files.createDirectories(tempDir.resolve("paths"));
