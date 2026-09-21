@@ -979,6 +979,10 @@ final class Follower {
      * Processes event triggers in path order until the next trigger is not yet reached.
      */
     private void processEventTriggers(Pose2d currentPose) {
+        processEventTriggers(currentPose, false);
+    }
+
+    private void processEventTriggers(Pose2d currentPose, boolean completed) {
         while (eventTriggerElementIndex < pathElementsWithConstraints.size()) {
             PathElement element = pathElementsWithConstraints.get(eventTriggerElementIndex).getFirst();
             if (!(element instanceof EventTrigger)) {
@@ -989,7 +993,7 @@ final class Follower {
                 eventTriggerElementIndex++;
                 continue;
             }
-            if (!isEventTriggerTRatioReached(eventTriggerElementIndex, currentPose)) {
+            if (!completed && !isEventTriggerTRatioReached(eventTriggerElementIndex, currentPose)) {
                 break;
             }
             EventTrigger trigger = (EventTrigger) element;
@@ -1087,6 +1091,13 @@ final class Follower {
     }
 
     void end(boolean interrupted) {
+        // Reaching the final tolerance completes the final segment, just as an
+        // intermediate handoff completes its segment. Its remaining events must
+        // not depend on physically crossing the exact endpoint. Faults and
+        // cancellation never dispatch unreached events.
+        if (active && !interrupted && initialized && isFinished()) {
+            processEventTriggers(poseSupplier.get(), true);
+        }
         active = false;
         if (interrupted) events.cancel(eventExecution);
         if (interrupted || !initialized || !rollingHandoff) stopCommandedMotion();

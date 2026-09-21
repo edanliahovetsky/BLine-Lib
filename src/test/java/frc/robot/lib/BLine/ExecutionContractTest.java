@@ -146,7 +146,8 @@ class ExecutionContractTest {
         scheduler.schedule(auto);
         cycle();
         assertTrue(scheduler.isScheduledOrRunning(follower));
-        robot.pose = new Pose2d(1, 0, Rotation2d.ZERO);
+        // Completion is inside tolerance, not at the exact t=1 event position.
+        robot.pose = new Pose2d(.97, 0, Rotation2d.ZERO);
         cycle();
         cycle();
         assertFalse(scheduler.isScheduledOrRunning(follower));
