@@ -143,6 +143,11 @@ class ExecutionContractTest {
         assertEquals(0, robot.resets, "Invalid paths must not reset odometry");
         assertEquals(0, robot.output.vx);
         command.end(true);
+        path.setElement(1, new Path.Waypoint((Path.TranslationTarget) null, new Path.RotationTarget(Rotation2d.ZERO, 1)));
+        assertDoesNotThrow(command::initialize, "Incomplete mutable waypoints must report validation failure before copying");
+        assertTrue(command.isFinished());
+        assertEquals(0, robot.resets);
+        command.end(true);
         path.setElement(1, new Path.TranslationTarget(4, 0));
         command.initialize();
         time += .02;
@@ -151,6 +156,26 @@ class ExecutionContractTest {
         assertEquals(4, command.getRemainingPathDistanceMeters(), 1e-9);
         assertEquals(1, robot.resets);
         command.end(true);
+    }
+
+    @Test void invalidResolvedLimitsCannotResetPoseOrFireEvents() {
+        for (double acceleration : new double[] {-1, 0, Double.NaN, Double.POSITIVE_INFINITY}) {
+            Robot robot = new Robot();
+            AtomicInteger events = new AtomicInteger();
+            FollowPathV2.registerEventTrigger("invalid-limits", events::incrementAndGet);
+            Path path = new Path(new Path.PathConstraints().setMaxAccelerationMetersPerSec2(acceleration),
+                new Path.TranslationTarget(0, 0), new Path.EventTrigger(0, "invalid-limits"), new Path.TranslationTarget(2, 0));
+            var command = v2(robot).build(path).withPoseReset();
+            command.initialize();
+            time += .02;
+            command.execute();
+            org.wpilib.command2.CommandScheduler.getInstance().getDefaultButtonLoop().poll();
+            assertTrue(command.isFinished());
+            assertEquals(0, robot.resets);
+            assertEquals(0, events.get());
+            assertEquals(0, robot.output.vx);
+            command.end(true);
+        }
     }
 
     @Test void singleWaypointInterpolatesItsEndingHeadingFromTheMeasuredStart() {

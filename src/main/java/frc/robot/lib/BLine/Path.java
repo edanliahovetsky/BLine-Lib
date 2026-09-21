@@ -992,6 +992,9 @@ public class Path {
         for (int i = 0; i < pathElements.size(); i++) {
             PathElement element = pathElements.get(i);
             if (element == null) return Optional.of("Element " + i + " is null");
+            if (element instanceof Waypoint waypoint && (waypoint.translationTarget() == null || waypoint.rotationTarget() == null)) {
+                return Optional.of("Element " + i + " has an incomplete waypoint");
+            }
             TranslationTarget translation = element instanceof Waypoint w ? w.translationTarget()
                 : element instanceof TranslationTarget t ? t : null;
             RotationTarget rotation = element instanceof Waypoint w ? w.rotationTarget()
@@ -999,6 +1002,7 @@ public class Path {
             if (translation != null && (translation.translation() == null
                 || !Double.isFinite(translation.translation().getX())
                 || !Double.isFinite(translation.translation().getY())
+                || translation.intermediateHandoffRadiusMeters() == null || translation.handoffMode() == null
                 || translation.intermediateHandoffRadiusMeters().filter(v -> !Double.isFinite(v) || v < 0).isPresent())) {
                 return Optional.of("Element " + i + " has an invalid translation or handoff distance");
             }

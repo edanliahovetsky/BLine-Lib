@@ -316,38 +316,26 @@ final class Follower {
         eventExecution = new PendingEvents.Execution();
         pathElementsWithConstraints = new ArrayList<>();
         cachedRemainingDistance = 0.0;
-        path = sourcePath.copy();
         if (driveType != DriveType.TANK && direction != DriveDirection.FORWARD) {
             logger.warning("FollowPath: BACKWARD tank drive direction requires DriveType.TANK");
             return;
         }
-        var error = path.validationError();
-        if (error.isPresent()) {
-            logger.warning("FollowPath: " + error.get());
+        PreparedPath prepared;
+        try {
+            prepared = PreparedPath.create(sourcePath,
+                shouldFlipPathSupplier == null ? java.util.Optional.empty() : java.util.Optional.of(shouldFlipPathSupplier.getAsBoolean()),
+                shouldMirrorPathSupplier == null ? java.util.Optional.empty() : java.util.Optional.of(shouldMirrorPathSupplier.getAsBoolean()));
+        } catch (IllegalArgumentException error) {
+            logger.warning("FollowPath: " + error.getMessage());
             return;
         }
-        if (shouldFlipPathSupplier != null) path.setFlipped(shouldFlipPathSupplier.getAsBoolean());
-        if (shouldMirrorPathSupplier != null) path.setMirrored(shouldMirrorPathSupplier.getAsBoolean());
-        // Resolve constraints before any reset or event can have a side effect.
-        executionDefaults = path.getDefaultGlobalConstraints();
-        endTranslationTolerance = path.getEndTranslationToleranceMeters();
-        endRotationTolerance = path.getEndRotationToleranceDeg();
-        HandoffMode inheritedMode = path.getHandoffMode().orElse(Path.getDefaultHandoffMode());
-        pathElementsWithConstraints = path.getPathElementsWithConstraintsNoWaypoints().stream().map(entry -> {
-            if (entry.getFirst() instanceof TranslationTarget target) {
-                PathElement resolved = new TranslationTarget(target.translation(),
-                    java.util.Optional.of(target.intermediateHandoffRadiusMeters()
-                        .orElse(executionDefaults.getIntermediateHandoffRadiusMeters())),
-                    java.util.Optional.of(target.handoffMode().orElse(inheritedMode)));
-                return new Pair<>(resolved, entry.getSecond());
-            }
-            return entry;
-        }).toList();
-        var finalTranslationConstraint = (TranslationTargetConstraint) pathElementsWithConstraints.getLast().getSecond();
-        rollingEnd = finalTranslationConstraint.minVelocityMetersPerSec() > 0;
-        var lastAuthored = path.getPathElements().getLast();
-        tankFinalHeading = lastAuthored instanceof Path.Waypoint waypoint
-            ? java.util.OptionalDouble.of(waypoint.rotationTarget().rotation().getRadians()) : java.util.OptionalDouble.empty();
+        path = prepared.path();
+        executionDefaults = prepared.defaults();
+        endTranslationTolerance = prepared.translationTolerance();
+        endRotationTolerance = prepared.rotationToleranceDegrees();
+        pathElementsWithConstraints = prepared.elements();
+        rollingEnd = prepared.rollingEnd();
+        tankFinalHeading = prepared.tankFinalHeading();
         if (resetPose) {
             if (path.hasAuthoredStart()) {
                 poseResetConsumer.accept(path.authoredStartPose(poseSupplier.get().getRotation()));
@@ -365,6 +353,11 @@ final class Follower {
         lastTimestamp = timestampSupplier.get();
         pathInitStartPose = poseSupplier.get();
         ChassisVelocities initialMeasured = robotRelativeSpeedsSupplier.get();
+        if (!finite(pathInitStartPose.getX(), pathInitStartPose.getY(), pathInitStartPose.getRotation().getRadians(),
+            initialMeasured.vx, initialMeasured.vy, initialMeasured.omega, lastTimestamp)) {
+            failExecution("Non-finite initial pose, measured velocity, or timestamp");
+            return;
+        }
         lastSpeeds = initialMeasured.toFieldRelative(pathInitStartPose.getRotation());
         tankController = driveType == DriveType.TANK ? new TankController(initialMeasured) : null;
         rotationProgress = new RotationProgress(pathElementsWithConstraints.stream().map(Pair::getFirst).toList(), pathInitStartPose);
@@ -383,7 +376,7 @@ final class Follower {
                 pathTranslations.add(((TranslationTarget) pathElementsWithConstraints.get(i).getFirst()).translation());
             }
         }
-        logBoolean("FollowPath/useTRatioBasedTranslationHandoffs", inheritedMode == HandoffMode.PROGRESS);
+        logBoolean("FollowPath/useTRatioBasedTranslationHandoffs", prepared.handoffMode() == HandoffMode.PROGRESS);
         translationListLoggingConsumer.accept(new Pair<>("FollowPath/pathTranslations", pathTranslations.toArray(Translation2d[]::new)));
     }
 
