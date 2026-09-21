@@ -15,7 +15,7 @@ import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.kinematics.ChassisVelocities;
-import org.wpilib.math.util.Pair;
+import org.wpilib.util.Pair;
 import org.wpilib.simulation.DriverStationSim;
 import frc.robot.lib.BLine.Path.PathElement;
 import frc.robot.lib.BLine.Path.PathElementConstraint;

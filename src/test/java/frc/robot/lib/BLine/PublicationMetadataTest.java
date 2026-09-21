@@ -1,6 +1,6 @@
 package frc.robot.lib.BLine;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.nio.file.Path;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -10,22 +10,17 @@ import org.w3c.dom.NodeList;
 
 class PublicationMetadataTest {
     @Test
-    void publishedPomExposesCommandsV2TransitivelyToConsumers() throws Exception {
+    void publishedPomDoesNotChooseTheRobotCommandFramework() throws Exception {
         var document = DocumentBuilderFactory.newInstance()
             .newDocumentBuilder()
             .parse(Path.of("build/publications/maven/pom-default.xml").toFile());
         NodeList dependencies = document.getElementsByTagName("dependency");
-
         for (int index = 0; index < dependencies.getLength(); index++) {
             Element dependency = (Element) dependencies.item(index);
-            if ("org.wpilib.commandsv2".equals(text(dependency, "groupId"))
-                && "commandsv2-java".equals(text(dependency, "artifactId"))) {
-                assertEquals("compile", text(dependency, "scope"));
-                return;
-            }
+            String artifact = text(dependency, "artifactId");
+            assertFalse(artifact.equals("commandsv2-java") || artifact.equals("commandsv3-java"),
+                "The application must choose its command framework, not BLine's POM");
         }
-
-        throw new AssertionError("Published POM does not contain Commands v2");
     }
 
     private static String text(Element element, String tagName) {

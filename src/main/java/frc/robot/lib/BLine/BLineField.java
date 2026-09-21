@@ -120,7 +120,7 @@ public final class BLineField {
         }
 
         int n = points.size();
-        Rotation2d previousRotation = Rotation2d.kZero;
+        Rotation2d previousRotation = Rotation2d.ZERO;
         for (int i = 0; i < n; i++) {
             Translation2d current = points.get(i);
             Translation2d next = findNextDistinctPoint(points, i);

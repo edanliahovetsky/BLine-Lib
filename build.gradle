@@ -15,18 +15,18 @@ java {
 
 repositories {
     maven {
-        url = "${System.getProperty('user.home')}/wpilib/2027_alpha5/maven"
+        url = "${System.getProperty('user.home')}/wpilib/2027_alpha7/maven"
     }
     mavenCentral()
     
     // WPILib Maven repository
     maven {
-        url = "https://frcmaven.wpi.edu/artifactory/release-2027/"
+        url = "https://frcmaven.wpi.edu/artifactory/release/"
     }
 }
 
 ext {
-    wpiVersion = "2027.0.0-alpha-6"
+    wpiVersion = "2027.0.0-alpha-7"
 }
 
 configurations {
@@ -36,7 +36,10 @@ configurations {
 dependencies {
     // WPILib dependencies
     implementation "org.wpilib.wpilibj:wpilibj-java:${wpiVersion}"
-    api "org.wpilib.commandsv2:commandsv2-java:${wpiVersion}"
+    compileOnly "org.wpilib.commandsv2:commandsv2-java:${wpiVersion}"
+    compileOnly "org.wpilib:commandsv3-java:${wpiVersion}"
+    testImplementation "org.wpilib.commandsv2:commandsv2-java:${wpiVersion}"
+    testImplementation "org.wpilib:commandsv3-java:${wpiVersion}"
     implementation "org.wpilib.wpimath:wpimath-java:${wpiVersion}"
     implementation "org.wpilib.wpiutil:wpiutil-java:${wpiVersion}"
     implementation "org.wpilib.wpiunits:wpiunits-java:${wpiVersion}"
@@ -46,6 +49,10 @@ dependencies {
     testCompileOnly "org.wpilib.ntcore:ntcore-java:${wpiVersion}"
     testCompileOnly "com.fasterxml.jackson.core:jackson-annotations:2.18.3"
     
+    implementation "org.wpilib.telemetry:telemetry-java:${wpiVersion}"
+    compileOnly "org.wpilib.tunables:tunables-java:${wpiVersion}"
+    testImplementation "org.wpilib.tunables:tunables-java:${wpiVersion}"
+
     // JSON Simple for path loading
     implementation "com.googlecode.json-simple:json-simple:1.1.1"
 
@@ -54,6 +61,7 @@ dependencies {
     testRuntimeOnly "org.wpilib.ntcore:ntcore-java:${wpiVersion}"
     testRuntimeOnly "org.wpilib.wpinet:wpinet-java:${wpiVersion}"
     testRuntimeOnly "com.fasterxml.jackson.core:jackson-databind:2.19.2"
+    testRuntimeOnly "io.avaje:avaje-jsonb:3.14"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.11.4"
     testRuntimeOnly "us.hebi.quickbuf:quickbuf-runtime:1.4"
 }
@@ -138,6 +146,8 @@ test {
     useJUnitPlatform()
     dependsOn tasks.named('extractWpilibTestNatives')
     dependsOn tasks.named('generatePomFileForMavenPublication')
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    jvmArgs '--enable-native-access=ALL-UNNAMED',
+        '--add-opens=java.base/jdk.internal.vm=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED'
     systemProperty 'java.library.path', "${layout.buildDirectory.get().asFile}/wpilib-test-natives/${wpilibNativeSharedPath}"
 }
