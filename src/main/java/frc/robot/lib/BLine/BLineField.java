@@ -21,7 +21,8 @@ import org.wpilib.smartdashboard.Field2d;
  *
  * <pre>{@code
  * Field2d field = new Field2d();
- * SmartDashboard.putData("Field", field);
+ * // Periodically publish using the robot's WPILib TelemetryTable:
+ * table.log("Field", field);
  *
  * BLineField.drawPath(field, scoreTwoPath);
  * BLineField.drawPath(field, "Leave", leavePath);

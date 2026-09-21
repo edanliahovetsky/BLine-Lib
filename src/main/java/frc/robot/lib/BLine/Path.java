@@ -84,7 +84,7 @@ public class Path {
      * <p>Each path element type has a corresponding constraint type that defines
      * the velocity and acceleration limits for that element.
      */
-    public sealed interface PathElementConstraint permits WaypointConstraint, TranslationTargetConstraint, RotationTargetConstraint {}
+    sealed interface PathElementConstraint permits WaypointConstraint, TranslationTargetConstraint, RotationTargetConstraint {}
 
     /**
      * Constraints for a {@link Waypoint}, including both translation and rotation limits.
@@ -96,7 +96,7 @@ public class Path {
      * @param minVelocityMetersPerSec Minimum translational velocity baseline in meters per second
      * @param minVelocityDegPerSec Minimum rotational velocity baseline in degrees per second
      */
-    public static record WaypointConstraint(
+    static record WaypointConstraint(
         double maxVelocityMetersPerSec,
         double maxAccelerationMetersPerSec2,
         double maxVelocityDegPerSec,
@@ -104,7 +104,7 @@ public class Path {
         double minVelocityMetersPerSec,
         double minVelocityDegPerSec
     ) implements PathElementConstraint {
-        public WaypointConstraint(
+        WaypointConstraint(
             double maxVelocityMetersPerSec,
             double maxAccelerationMetersPerSec2,
             double maxVelocityDegPerSec,
@@ -128,12 +128,12 @@ public class Path {
      * @param maxAccelerationMetersPerSec2 Maximum translational acceleration in meters per second squared
      * @param minVelocityMetersPerSec Minimum translational velocity baseline in meters per second
      */
-    public static record TranslationTargetConstraint(
+    static record TranslationTargetConstraint(
         double maxVelocityMetersPerSec,
         double maxAccelerationMetersPerSec2,
         double minVelocityMetersPerSec
     ) implements PathElementConstraint {
-        public TranslationTargetConstraint(
+        TranslationTargetConstraint(
             double maxVelocityMetersPerSec,
             double maxAccelerationMetersPerSec2
         ) {
@@ -148,12 +148,12 @@ public class Path {
      * @param maxAccelerationDegPerSec2 Maximum rotational acceleration in degrees per second squared
      * @param minVelocityDegPerSec Minimum rotational velocity baseline in degrees per second
      */
-    public static record RotationTargetConstraint(
+    static record RotationTargetConstraint(
         double maxVelocityDegPerSec,
         double maxAccelerationDegPerSec2,
         double minVelocityDegPerSec
     ) implements PathElementConstraint {
-        public RotationTargetConstraint(
+        RotationTargetConstraint(
             double maxVelocityDegPerSec,
             double maxAccelerationDegPerSec2
         ) {

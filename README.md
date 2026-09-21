@@ -1,8 +1,8 @@
 <h1 align="center">BLine-Lib</h1>
 
 <p align="center">
-  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-0.9.1--wpilib2027.alpha06.01-2563eb" alt="Compatibility version 0.9.1-wpilib2027.alpha06.01"></a>
-  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/WPILib-2027.0.0--alpha--6-c1121f" alt="WPILib 2027.0.0 Alpha 6"></a>
+  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-2027.0.0--beta.1-2563eb" alt="Development candidate 2027.0.0-beta.1"></a>
+  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/WPILib-2027.0.0--alpha--7-c1121f" alt="WPILib 2027.0.0 Alpha 7"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-0f766e" alt="BSD 3-Clause License"></a>
 </p>
 
@@ -12,10 +12,10 @@ built around practical tuning, quick iteration, and rapid empirical testing in
 time-constrained build-season environments.
 
 > [!IMPORTANT]
-> This is the `wpilib-2027` compatibility line for WPILib 2027.0.0-alpha-6 and
-> Commands v2. Read the [WPILib 2027 installation, migration, and validation
-> guide](WPILIB_2027.md) before using it. The `main` branch remains the stable
-> WPILib 2026 release line.
+> This is the `wpilib-2027` development line for WPILib 2027.0.0-alpha-7,
+> with Commands v3 and v2, swerve, tank and mecanum support. The beta is pending
+> manual review and distribution. Read the [2027 guide](WPILIB_2027.md).
+> The `main` branch remains the stable WPILib 2026 release line.
 
 **Quick links**
 
@@ -35,52 +35,41 @@ time-constrained build-season environments.
 
 ## Installation
 
-Use the year-specific `BLine-Lib-2027.json`, not the stable `BLine-Lib.json`.
-The [WPILib 2027 guide](WPILIB_2027.md) gives the Tagged candidate URL,
-dependency provenance, Commands v2 requirement, and migration steps. The
-immutable compatibility tag exists for Human acceptance, but no GitHub Formal
-Release exists yet.
+The 2027 candidate uses `BLine-Lib-2027.json`. It requires Java 25 and the
+WPILib command framework selected by your robot project. This development
+candidate is not yet published; do not replace a working 2026 installation
+with an unpublished beta vendordep. Local review builds use the packaged
+artifact supplied with the review projects.
 
 ## Quick Start
-
-For BLine API setup after the compatibility vendordep is installed, see the
-**[getting started guide](https://bline-docs.pages.dev/getting-started/)**. Its
-installation steps and WPILib imports target stable WPILib 2026; use the
-[WPILib 2027 guide](WPILIB_2027.md) for those year-specific steps.
-
-### Basic Setup
 
 ```java
 import frc.robot.lib.BLine.*;
 import org.wpilib.math.controller.PIDController;
 
-// 1. Set global constraints
-Path.setDefaultGlobalConstraints(new Path.DefaultGlobalConstraints(
-    4.0,    // maxVelocityMetersPerSec
-    3.0,    // maxAccelerationMetersPerSec2
-    360.0,  // maxVelocityDegPerSec
-    720.0,  // maxAccelerationDegPerSec2
-    0.05,   // endTranslationToleranceMeters
-    2.0,    // endRotationToleranceDeg
-    0.3     // intermediateHandoffRadiusMeters
-));
+// Commands v3: drive implements Mechanism. Use FollowPathV2.Builder and
+// a Subsystem for Commands v2. Both have the same robot callbacks and options.
+var paths = new FollowPath.Builder(
+    DriveType.SWERVE,
+    drive,
+    drive::getPose,
+    drive::resetPose,
+    drive::getMeasuredRobotRelativeVelocity,
+    drive::driveRobotRelative,
+    new PIDController(5, 0, 0),  // distance: metres -> m/s
+    new PIDController(3, 0, 0),  // heading: radians -> rad/s
+    new PIDController(2, 0, 0)   // cross-track distance: metres -> m/s
+).withDefaultShouldFlip();
 
-// 2. Create a reusable path builder
-FollowPath.Builder pathBuilder = new FollowPath.Builder(
-    driveSubsystem,
-    driveSubsystem::getPose,
-    driveSubsystem::getChassisSpeeds,
-    driveSubsystem::drive,
-    new PIDController(5.0, 0.0, 0.0),  // translation
-    new PIDController(3.0, 0.0, 0.0),  // rotation
-    new PIDController(2.0, 0.0, 0.0)   // cross-track
-).withDefaultShouldFlip()
- .withPoseReset(driveSubsystem::resetPose);
-
-// 3. Load and follow a path
-Path myPath = new Path("myPathFile");  // loads deploy/autos/paths/myPathFile.json
-Command followCommand = pathBuilder.build(myPath);
+var path = new Path("score"); // deploy/autos/paths/score.json
+var auto = paths.build(path).withPoseReset();
 ```
+
+The gains above are examples; tune them for your robot. The reset callback is
+required, but reset is only enabled on commands with `withPoseReset()`.
+Robot-relative velocity feedback must come from measured motion.
+See the [2027 guide](WPILIB_2027.md) for scheduling, events, tank direction,
+path defaults, endpoint behavior and telemetry.
 
 ### Rotation Override
 
@@ -111,28 +100,15 @@ FollowPath.overrideRotation(
 
 ### Command-Based Autos With Event Triggers
 
-When a BLine path contains event triggers that schedule WPILib commands, prefer
-`BLineCommands` for the surrounding command composition:
+Register event commands during robot setup using the matching adapter:
+`FollowPath.registerEventTrigger("intake", intakeCommand)` for v3, or
+`FollowPathV2.registerEventTrigger(...)` for v2. Commands are dispatched on
+the scheduler's next event-loop poll and can outlive the path.
 
-```java
-import static frc.robot.lib.BLine.BLineCommands.sequence;
-import org.wpilib.command2.Command;
-
-Command auto = sequence(
-    shooter.shoot().withTimeout(2.0),
-    pathing.followPath("intakethroughdepot"),
-    shooter.shoot()
-);
-```
-
-`BLineCommands` mirrors the WPILib `Commands` composition methods that accept
-child commands, but proxies those children before building the group. This keeps
-the outer auto from owning every child requirement for its whole lifetime, which
-lets BLine event-trigger commands use normal WPILib scheduling. See the
-`BLineCommands` Javadocs for method-by-method behavior and limitations. The API
-intentionally contains only WPILib `Commands` counterparts: `either`, `select`,
-`defer`, `deferredProxy`, `sequence`, `repeatingSequence`, `parallel`, `race`,
-and `deadline`.
+Use ordinary coroutine composition for v3. `BLineCommandsV2` retains the
+proxy-based v2 composition helpers for autos whose events share mechanism
+requirements. Your robot owns cancellation of dispatched events; see the
+[cleanup example](WPILIB_2027.md#event-commands).
 
 ### Field2d Visualization
 
@@ -143,10 +119,10 @@ drawing a BLine path directly as a connected field object:
 ```java
 import frc.robot.lib.BLine.BLineField;
 import org.wpilib.smartdashboard.Field2d;
-import org.wpilib.smartdashboard.SmartDashboard;
 
 Field2d field = new Field2d();
-SmartDashboard.putData("Field", field);
+// In robotPeriodic(), publish through your WPILib TelemetryTable:
+table.log("Field", field);
 
 // Draw a planned path once. BLine assigns a stable unique field object name for
 // this path instance and returns it if you want to inspect it.
@@ -164,7 +140,7 @@ points, use `myPath.getTranslations()`.
 
 ## Performance
 
-BLine has been validated with randomized Monte Carlo trials in a WPILib physics
+The original holonomic follower was evaluated with randomized Monte Carlo trials in a WPILib physics
 simulation, using Theta* for initial pathfinding and an Artificial Bee Colony
 (ABC) optimizer to benchmark the system against PathPlanner.
 
@@ -173,6 +149,8 @@ simulation, using Theta* for initial pathfinding and an Artificial Bee Colony
 | Path computation time | **97% reduction** |
 | Cross-track error at waypoints | **66% reduction** |
 | Total path tracking time | **2.6% decrease** compared to PathPlanner |
+
+These historical results are not validation of the new 2027 tank controller.
 
 Read the **[full white paper](https://docs.google.com/document/d/1Tc87YKWHtsEMEvmVDBD1Ww4e7vIUO2FyK3lwwuf-ZL4/edit?usp=sharing)**.
 

@@ -70,7 +70,7 @@ final class JsonUtils {
      * @return The loaded Path object
      * @throws RuntimeException if the file cannot be read or parsed
      */
-    public static Path loadPath(File autosDir, String pathFileName) {
+    static Path loadPath(File autosDir, String pathFileName) {
         try {
             File pathFile = new File(new File(autosDir, "paths"), pathFileName);
 
@@ -99,7 +99,7 @@ final class JsonUtils {
      * @param defaultGlobalConstraints The default global constraints to use
      * @return The loaded Path object
      */
-    public static Path loadPath(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
+    static Path loadPath(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         return buildPathFromJson(json, defaultGlobalConstraints);
     }
 
@@ -112,7 +112,7 @@ final class JsonUtils {
      * @return The loaded Path object
      * @throws RuntimeException if the file cannot be read or parsed
      */
-    public static Path loadPath(String pathFileName) {
+    static Path loadPath(String pathFileName) {
         return loadPath(projectRoot(), pathFileName);
     }
 
@@ -127,7 +127,7 @@ final class JsonUtils {
      * @return The loaded Path object
      * @throws RuntimeException if the JSON string cannot be parsed
      */
-    public static Path loadPathFromJsonString(String pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
+    static Path loadPathFromJsonString(String pathJson, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
         try {
             JSONObject json = object(new JSONParser().parse(pathJson), "path");
             return buildPathFromJson(json, defaultGlobalConstraints);
@@ -444,7 +444,7 @@ final class JsonUtils {
      * @return DefaultGlobalConstraints loaded from the config file
      * @throws RuntimeException if the config file cannot be read or parsed
      */
-    public static Path.DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
+    static Path.DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
         try {
             File config = new File(autosDir, "config.json");
 
