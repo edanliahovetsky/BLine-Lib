@@ -786,7 +786,7 @@ public class Path {
     private PathConstraints pathConstraints;
     private static DefaultGlobalConstraints defaultGlobalConstraints = null;
     private boolean flipped = false;
-    private boolean isValid = true;
+    private boolean mirrored = false;
     
     /**
      * Creates a new Path with the specified elements, constraints, and global defaults.
@@ -819,8 +819,7 @@ public class Path {
             Path.defaultGlobalConstraints = defaultGlobalConstraints.copy();
         }
         
-        // Validate that first and last elements are both either waypoints or translation targets
-        validatePathEndpoints();
+
     }
 
     /**
@@ -884,8 +883,7 @@ public class Path {
         this.pathConstraints = loaded.pathConstraints;
         // globals are static and already copied
 
-        // Validate that first and last elements are both either waypoints or translation targets
-        validatePathEndpoints();
+
     }
 
     /**
@@ -900,47 +898,60 @@ public class Path {
     }
 
     /**
-     * Validates that the first and last path elements are both either waypoints or translation targets.
-     * If the path has only 1 element, it must be a waypoint or translation target.
-     * Logs an error if validation fails but allows program execution to continue.
-     */
-    private void validatePathEndpoints() {
-        if (pathElements.size() == 0) {
-            isValid = false;
-            logger.log(Level.WARNING, "Path validation failed: Path cannot be empty");
-            return;
-        }
-
-        if (pathElements.size() == 1) {
-            PathElement element = pathElements.get(0);
-            if (element instanceof RotationTarget) {
-                isValid = false;
-                logger.log(Level.WARNING, "Path validation failed: Path cannot consist of a single rotation target");
-            }
-            return;
-        }
-
-        PathElement first = pathElements.get(0);
-        PathElement last = pathElements.get(pathElements.size() - 1);
-
-        boolean firstIsValid = first instanceof Waypoint || first instanceof TranslationTarget;
-        boolean lastIsValid = last instanceof Waypoint || last instanceof TranslationTarget;
-
-        if (!firstIsValid || !lastIsValid) {
-            isValid = false;
-            logger.log(Level.WARNING, "Path validation failed: First and last path elements must both be either Waypoints or TranslationTargets. " +
-                "First element is: " + first.getClass().getSimpleName() + ", " +
-                "Last element is: " + last.getClass().getSimpleName());
-        }
-    }
-
-    /**
-     * Checks if this path passed validation.
-     * 
-     * @return true if the path is valid and can be followed, false otherwise
+     * Checks the current elements without changing the path or logging. Following revalidates a
+     * fresh snapshot at each execution, so edits made after construction are included.
+     *
+     * @return whether the current path can be prepared for following
      */
     public boolean isValid() {
-        return isValid;
+        return validationError().isEmpty();
+    }
+
+    Optional<String> validationError() {
+        if (pathElements.isEmpty()) return Optional.of("Path has no destination");
+        PathElement last = pathElements.getLast();
+        if (!(last instanceof Waypoint || last instanceof TranslationTarget)) {
+            return Optional.of("The last element must be a waypoint or translation target");
+        }
+        for (int i = 0; i < pathElements.size(); i++) {
+            PathElement element = pathElements.get(i);
+            if (element == null) return Optional.of("Element " + i + " is null");
+            TranslationTarget translation = element instanceof Waypoint w ? w.translationTarget()
+                : element instanceof TranslationTarget t ? t : null;
+            RotationTarget rotation = element instanceof Waypoint w ? w.rotationTarget()
+                : element instanceof RotationTarget r ? r : null;
+            if (translation != null && (translation.translation() == null
+                || !Double.isFinite(translation.translation().getX())
+                || !Double.isFinite(translation.translation().getY())
+                || translation.intermediateHandoffRadiusMeters().filter(v -> !Double.isFinite(v) || v < 0).isPresent())) {
+                return Optional.of("Element " + i + " has an invalid translation or handoff distance");
+            }
+            if (rotation != null && (rotation.rotation() == null
+                || !Double.isFinite(rotation.rotation().getRadians())
+                || !Double.isFinite(rotation.t_ratio()) || rotation.t_ratio() < 0 || rotation.t_ratio() > 1)) {
+                return Optional.of("Element " + i + " has an invalid rotation or progress");
+            }
+            if (element instanceof EventTrigger event && (!Double.isFinite(event.t_ratio())
+                || event.t_ratio() < 0 || event.t_ratio() > 1 || event.libKey() == null)) {
+                return Optional.of("Element " + i + " has an invalid event key or progress");
+            }
+        }
+        return Optional.empty();
+    }
+
+    // A single destination supplies no authored start. Neither do leading rotation/event elements.
+    boolean hasAuthoredStart() {
+        return pathElements.size() > 1
+            && (pathElements.getFirst() instanceof Waypoint || pathElements.getFirst() instanceof TranslationTarget);
+    }
+
+    Pose2d authoredStartPose(Rotation2d measuredHeading) {
+        if (!hasAuthoredStart()) throw new IllegalStateException("Path has no authored start pose");
+        PathElement first = pathElements.getFirst();
+        if (first instanceof Waypoint waypoint) {
+            return new Pose2d(waypoint.translationTarget().translation(), waypoint.rotationTarget().rotation());
+        }
+        return new Pose2d(((TranslationTarget) first).translation(), measuredHeading);
     }
 
     /**
@@ -1321,7 +1332,7 @@ public class Path {
                     ((WaypointConstraint)constraint).maxAccelerationDegPerSec2(),
                     ((WaypointConstraint)constraint).minVelocityDegPerSec()
                 );
-                if (i == 0) {
+                if (i == 0 && hasAuthoredStart()) {
                     rotationTarget = new RotationTarget(
                         rotationTarget.rotation(), 
                         0, 
@@ -1359,118 +1370,70 @@ public class Path {
     }
 
     /**
-     * Flips this path to the opposite alliance side.
-     * 
-     * <p>Uses {@link FlippingUtil} to transform all coordinates. This method only
-     * flips once - subsequent calls have no effect until {@link #undoFlip()} is called.
+     * Selects the desired alliance flip state. Repeating the same value has no effect.
+     * The transform is a half-turn around the field center; authored element order is preserved.
+     * @param flipped whether to use the opposite alliance's coordinates
+     * @return this path
      */
-    public void flip() {
-        if (!isValid()) {
-            return;
+    public Path setFlipped(boolean flipped) {
+        if (this.flipped != flipped) {
+            transformElements(
+                t -> new Translation2d(FlippingUtil.fieldSizeX - t.getX(), FlippingUtil.fieldSizeY - t.getY()),
+                r -> r.minus(Rotation2d.PI));
+            this.flipped = flipped;
         }
-        
-        if (flipped) return;
-
-        FlippingUtil.FieldSymmetry previousSymmetryType = FlippingUtil.symmetryType;
-        FlippingUtil.symmetryType = FlippingUtil.FieldSymmetry.kRotational;
-        try {
-            for (int i = 0; i < pathElements.size(); i++) {
-                PathElement element = pathElements.get(i);
-                if (element instanceof TranslationTarget) {
-                    pathElements.set(i, new TranslationTarget(
-                        FlippingUtil.flipFieldPosition(((TranslationTarget) element).translation()),
-                        ((TranslationTarget) element).intermediateHandoffRadiusMeters()
-                    ));
-                } else if (element instanceof RotationTarget) {
-                    pathElements.set(i, new RotationTarget(
-                        FlippingUtil.flipFieldRotation(((RotationTarget) element).rotation()),
-                        ((RotationTarget) element).t_ratio(),
-                        ((RotationTarget) element).profiledRotation()
-                    ));
-                } else if (element instanceof Waypoint) {
-                    pathElements.set(i, new Waypoint(
-                        new TranslationTarget(
-                            FlippingUtil.flipFieldPosition(((Waypoint) element).translationTarget().translation()),
-                            ((Waypoint) element).translationTarget().intermediateHandoffRadiusMeters()
-                        ),
-                        new RotationTarget(
-                            FlippingUtil.flipFieldRotation(((Waypoint) element).rotationTarget().rotation()),
-                            ((Waypoint) element).rotationTarget().t_ratio(),
-                            ((Waypoint) element).rotationTarget().profiledRotation()
-                        )
-                    ));
-                } else if (element instanceof EventTrigger) {
-                    pathElements.set(i, new EventTrigger(
-                        ((EventTrigger) element).t_ratio(),
-                        ((EventTrigger) element).libKey()
-                    ));
-                }
-            }
-            flipped = true;
-        } finally {
-            FlippingUtil.symmetryType = previousSymmetryType;
-        }
+        return this;
     }
 
     /**
-     * Mirrors this path vertically across the field centerline.
-     *
-     * <p>This mirrors across the field width (horizontal centerline), where
-     * {@code y -> fieldSizeY - y} and {@code x} is unchanged, via {@link FlippingUtil}.
+     * Selects the desired reflection state across the field width. Repeating a value has no effect.
+     * @param mirrored whether to reflect Y and negate headings
+     * @return this path
      */
-    public void mirror() {
-        if (!isValid()) {
-            return;
+    public Path setMirrored(boolean mirrored) {
+        if (this.mirrored != mirrored) {
+            transformElements(FlippingUtil::mirrorFieldPosition, FlippingUtil::mirrorFieldRotation);
+            this.mirrored = mirrored;
         }
-
-        List<PathElement> mirroredPathElements = new ArrayList<>(pathElements.size());
-        for (PathElement element : pathElements) {
-            if (element instanceof TranslationTarget translationTarget) {
-                mirroredPathElements.add(new TranslationTarget(
-                    FlippingUtil.mirrorFieldPosition(translationTarget.translation()),
-                    translationTarget.intermediateHandoffRadiusMeters()
-                ));
-            } else if (element instanceof RotationTarget rotationTarget) {
-                mirroredPathElements.add(new RotationTarget(
-                    FlippingUtil.mirrorFieldRotation(rotationTarget.rotation()),
-                    rotationTarget.t_ratio(),
-                    rotationTarget.profiledRotation()
-                ));
-            } else if (element instanceof Waypoint waypoint) {
-                mirroredPathElements.add(new Waypoint(
-                    new TranslationTarget(
-                        FlippingUtil.mirrorFieldPosition(waypoint.translationTarget().translation()),
-                        waypoint.translationTarget().intermediateHandoffRadiusMeters()
-                    ),
-                    new RotationTarget(
-                        FlippingUtil.mirrorFieldRotation(waypoint.rotationTarget().rotation()),
-                        waypoint.rotationTarget().t_ratio(),
-                        waypoint.rotationTarget().profiledRotation()
-                    )
-                ));
-            } else if (element instanceof EventTrigger eventTrigger) {
-                mirroredPathElements.add(new EventTrigger(eventTrigger.t_ratio(), eventTrigger.libKey()));
-            } else {
-                mirroredPathElements.add(element.copy());
-            }
-        }
-        pathElements = mirroredPathElements;
+        return this;
     }
 
-    /**
-     * Undoes a previous flip operation, restoring original coordinates.
-     * 
-     * <p>Has no effect if the path has not been flipped.
-     */
-    public void undoFlip() {
-        if (!isValid()) {
-            return;
+    /** @return whether alliance flipping is currently applied */
+    public boolean isFlipped() { return flipped; }
+
+    /** @return whether field-width reflection is currently applied */
+    public boolean isMirrored() { return mirrored; }
+
+    /** @deprecated Use {@link #setFlipped(boolean)} to state the desired result explicitly. */
+    @Deprecated
+    public void flip() { setFlipped(true); }
+
+    /** @deprecated Use {@link #setFlipped(boolean)} with false. */
+    @Deprecated
+    public void undoFlip() { setFlipped(false); }
+
+    /** @deprecated This toggles reflection. Use {@link #setMirrored(boolean)} for desired state. */
+    @Deprecated
+    public void mirror() { setMirrored(!mirrored); }
+
+    private void transformElements(
+        java.util.function.UnaryOperator<Translation2d> position,
+        java.util.function.UnaryOperator<Rotation2d> heading
+    ) {
+        for (int i = 0; i < pathElements.size(); i++) {
+            PathElement element = pathElements.get(i);
+            if (element instanceof TranslationTarget t) {
+                pathElements.set(i, new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters()));
+            } else if (element instanceof RotationTarget r) {
+                pathElements.set(i, new RotationTarget(heading.apply(r.rotation()), r.t_ratio(), r.profiledRotation()));
+            } else if (element instanceof Waypoint w) {
+                TranslationTarget t = w.translationTarget();
+                RotationTarget r = w.rotationTarget();
+                pathElements.set(i, new Waypoint(
+                    new TranslationTarget(position.apply(t.translation()), t.intermediateHandoffRadiusMeters()),
+                    new RotationTarget(heading.apply(r.rotation()), r.t_ratio(), r.profiledRotation())));
+            }
         }
-        
-        if (!flipped) return;
-        flipped = false;
-        flip();
-        flipped = false;
     }
 
     /**
@@ -1634,21 +1597,25 @@ public class Path {
             ));
     }
     
+    private Path(Path source, List<PathElement> elements) {
+        pathElements = elements;
+        pathConstraints = source.pathConstraints.copy();
+        flipped = source.flipped;
+        mirrored = source.mirrored;
+    }
+
     /**
      * Creates a deep copy of this path.
      * 
-     * <p>The copy includes all path elements, constraints, and preserves the flipped state.
+     * <p>The copy includes all path elements, constraints, and preserves both transform states.
      * 
      * @return A new Path with copied data
      */
     public Path copy() {
         List<PathElement> deepCopiedElements = new ArrayList<>(pathElements.size());
         for (PathElement element : pathElements) {
-            deepCopiedElements.add(element.copy());
+            deepCopiedElements.add(element == null ? null : element.copy());
         }
-        Path copiedPath = new Path(deepCopiedElements, pathConstraints.copy(), defaultGlobalConstraints.copy());
-        copiedPath.flipped = this.flipped;
-        copiedPath.isValid = this.isValid;
-        return copiedPath;
+        return new Path(this, deepCopiedElements);
     }
 }

@@ -38,27 +38,27 @@ class FollowPathTest {
     @BeforeEach
     void setUp() {
         Path.setDefaultGlobalConstraints(TEST_GLOBAL_CONSTRAINTS);
-        FollowPath.setPoseLoggingConsumer(value -> {});
-        FollowPath.setDoubleLoggingConsumer(value -> {});
-        FollowPath.setBooleanLoggingConsumer(value -> {});
-        FollowPath.setTranslationListLoggingConsumer(value -> {});
-        FollowPath.clearRotationOverride();
+        FollowPathV2.setPoseLoggingConsumer(value -> {});
+        FollowPathV2.setDoubleLoggingConsumer(value -> {});
+        FollowPathV2.setBooleanLoggingConsumer(value -> {});
+        FollowPathV2.setTranslationListLoggingConsumer(value -> {});
+        FollowPathV2.clearRotationOverride();
     }
 
     @AfterEach
     void tearDown() {
-        FollowPath.setTimestampSupplier(null);
-        FollowPath.setPoseLoggingConsumer(value -> {});
-        FollowPath.setDoubleLoggingConsumer(value -> {});
-        FollowPath.setBooleanLoggingConsumer(value -> {});
-        FollowPath.setTranslationListLoggingConsumer(value -> {});
-        FollowPath.clearRotationOverride();
+        FollowPathV2.setTimestampSupplier(null);
+        FollowPathV2.setPoseLoggingConsumer(value -> {});
+        FollowPathV2.setDoubleLoggingConsumer(value -> {});
+        FollowPathV2.setBooleanLoggingConsumer(value -> {});
+        FollowPathV2.setTranslationListLoggingConsumer(value -> {});
+        FollowPathV2.clearRotationOverride();
     }
 
     @Test
     void rotationLooksAheadToNextSegmentWhenCurrentSegmentHasNoRotationTargets() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
             new Path.TranslationTarget(new Translation2d(1.0, 0.0)),
@@ -66,7 +66,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(2.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -77,7 +77,7 @@ class FollowPathTest {
     @Test
     void rotationLooksAheadAcrossMultipleSegmentsWhenNeeded() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
             new Path.TranslationTarget(new Translation2d(1.0, 0.0)),
@@ -86,7 +86,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(3.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -97,7 +97,7 @@ class FollowPathTest {
     @Test
     void zeroLengthSegmentUsesHighestTRatioRotationAndCanFinish() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
             new Path.RotationTarget(Rotation2d.fromDegrees(30.0), 0.2),
@@ -105,7 +105,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(0.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -122,14 +122,14 @@ class FollowPathTest {
     @Test
     void multiWaypointPathStillFinishesNormally() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.Waypoint(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0))),
             new Path.Waypoint(new Pose2d(1.0, 0.0, Rotation2d.fromDegrees(45.0))),
             new Path.Waypoint(new Pose2d(2.0, 1.0, Rotation2d.fromDegrees(90.0)))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
 
         runExecute(command, robot);
@@ -145,12 +145,12 @@ class FollowPathTest {
     @Test
     void singleTranslationTargetPathCanFinish() {
         MutableRobot robot = new MutableRobot(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(15.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(1.0, 2.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -161,29 +161,29 @@ class FollowPathTest {
     @Test
     void singleWaypointPathCanFinish() {
         MutableRobot robot = new MutableRobot(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(90.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.Waypoint(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(90.0)))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
-        assertEquals(0, command.getCurrentTranslationElementIndex(), "Single waypoint path should remain on only translation target");
+        assertEquals(1, command.getCurrentTranslationElementIndex(), "Destination waypoint expands to its ending rotation and translation");
         assertTrue(command.isFinished(), "Single waypoint path should finish when translation and rotation are at setpoint");
     }
 
     @Test
     void tratioHandoffStillAdvancesWhenRobotStartsInsideCurrentTargetRadius() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0005, 0.0)),
             new Path.TranslationTarget(new Translation2d(1.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot, true);
+        FollowPathV2 command = createCommand(path, robot, true);
         command.initialize();
         runExecute(command, robot);
 
@@ -202,7 +202,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(1.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
 
         assertEquals(
             0.0,
@@ -215,14 +215,14 @@ class FollowPathTest {
     @Test
     void remainingPathDistanceDecreasesAsRobotProgresses() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
             new Path.TranslationTarget(new Translation2d(1.0, 0.0)),
             new Path.TranslationTarget(new Translation2d(2.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
 
         runExecute(command, robot);
@@ -248,7 +248,7 @@ class FollowPathTest {
             new Path.RotationTarget(Rotation2d.fromDegrees(45.0), 0.5)
         );
 
-        FollowPath command = createCommand(invalidPath, robot);
+        FollowPathV2 command = createCommand(invalidPath, robot);
         command.initialize();
 
         assertEquals(
@@ -262,9 +262,9 @@ class FollowPathTest {
     @Test
     void rotationTargetPoseLoggingUsesTargetRotationAndNewKey() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Pose2d> poseLogs = new HashMap<>();
-        FollowPath.setPoseLoggingConsumer((Pair<String, Pose2d> pair) -> poseLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setPoseLoggingConsumer((Pair<String, Pose2d> pair) -> poseLogs.put(pair.getFirst(), pair.getSecond()));
 
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
@@ -272,7 +272,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(2.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -293,14 +293,14 @@ class FollowPathTest {
     @Test
     void radiusBasedTranslationHandoffRequiresDistanceToTarget() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(0.0, 0.0, 0.20),
             new Path.TranslationTarget(10.0, 0.0, 0.20),
             new Path.TranslationTarget(20.0, 0.0, 0.20)
         );
 
-        FollowPath command = createCommand(path, robot, false);
+        FollowPathV2 command = createCommand(path, robot, false);
         command.initialize();
 
         runExecute(command, robot);
@@ -320,14 +320,14 @@ class FollowPathTest {
     @Test
     void tRatioBasedTranslationHandoffUsesSegmentProgress() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(0.0, 0.0, 0.20),
             new Path.TranslationTarget(10.0, 0.0, 0.20),
             new Path.TranslationTarget(20.0, 0.0, 0.20)
         );
 
-        FollowPath command = createCommand(path, robot, true);
+        FollowPathV2 command = createCommand(path, robot, true);
         command.initialize();
 
         runExecute(command, robot);
@@ -347,12 +347,12 @@ class FollowPathTest {
     @Test
     void translationAndRotationMustBothBeSatisfiedToFinish() {
         MutableRobot robot = new MutableRobot(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.Waypoint(new Pose2d(1.0, 2.0, Rotation2d.fromDegrees(90.0)))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -366,12 +366,12 @@ class FollowPathTest {
     @Test
     void notFinishedWhenTranslationErrorRemainsEvenIfRotationMatches() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.Waypoint(new Pose2d(2.0, 0.0, Rotation2d.fromDegrees(0.0)))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -381,11 +381,11 @@ class FollowPathTest {
     @Test
     void translationMinimumBaselineRaisesControllerOutputOutsideTolerance() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
         Path path = new Path(
             new Path.PathConstraints()
@@ -396,7 +396,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(0.10, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -408,11 +408,11 @@ class FollowPathTest {
     @Test
     void translationMinimumBaselineTurnsOffInsideTolerance() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
         Path path = new Path(
             new Path.PathConstraints()
@@ -421,7 +421,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(0.02, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -436,11 +436,11 @@ class FollowPathTest {
     @Test
     void rotationMinimumBaselineRaisesControllerOutputOutsideTolerance() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
         Path path = new Path(
             new Path.PathConstraints()
@@ -453,7 +453,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(1.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -465,11 +465,11 @@ class FollowPathTest {
     @Test
     void rotationMinimumBaselineTurnsOffInsideTolerance() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(4.8)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
         Path path = new Path(
             new Path.PathConstraints()
@@ -480,7 +480,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(1.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -495,7 +495,7 @@ class FollowPathTest {
     @Test
     void rotationIndexTransitionsToNoActiveTargetAfterLastRotation() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
             new Path.RotationTarget(Rotation2d.fromDegrees(90.0), 0.5),
@@ -503,7 +503,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(2.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -524,12 +524,12 @@ class FollowPathTest {
     @Test
     void eventTriggersFireOnceInOrderAsProgressAdvances() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         String keyA = newEventKey("event-order-a");
         String keyB = newEventKey("event-order-b");
         List<String> firedOrder = new ArrayList<>();
-        FollowPath.registerEventTrigger(keyA, () -> firedOrder.add("A"));
-        FollowPath.registerEventTrigger(keyB, () -> firedOrder.add("B"));
+        FollowPathV2.registerEventTrigger(keyA, () -> firedOrder.add("A"));
+        FollowPathV2.registerEventTrigger(keyB, () -> firedOrder.add("B"));
 
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
@@ -538,7 +538,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(10.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
 
         runExecute(command, robot);
@@ -560,10 +560,10 @@ class FollowPathTest {
     @Test
     void eventTriggerOnDegenerateSegmentFiresImmediatelyAndOnlyOnce() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         String key = newEventKey("event-degenerate");
         AtomicInteger fireCount = new AtomicInteger(0);
-        FollowPath.registerEventTrigger(key, fireCount::incrementAndGet);
+        FollowPathV2.registerEventTrigger(key, fireCount::incrementAndGet);
 
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
@@ -572,7 +572,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(1.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
 
         runExecute(command, robot);
@@ -585,10 +585,10 @@ class FollowPathTest {
     @Test
     void eventTriggerOnFutureSegmentDoesNotFireEarly() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         String key = newEventKey("event-future");
         AtomicInteger fireCount = new AtomicInteger(0);
-        FollowPath.registerEventTrigger(key, fireCount::incrementAndGet);
+        FollowPathV2.registerEventTrigger(key, fireCount::incrementAndGet);
 
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(0.0, 0.0)),
@@ -597,7 +597,7 @@ class FollowPathTest {
             new Path.TranslationTarget(new Translation2d(2.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
 
         runExecute(command, robot);
@@ -613,13 +613,13 @@ class FollowPathTest {
     @Test
     void invalidPathFinishesImmediatelyAndCommandsZeroSpeeds() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         robot.setRobotRelativeSpeeds(new ChassisVelocities(1.5, -0.3, 0.7));
         Path invalidPath = new Path(
             new Path.RotationTarget(Rotation2d.fromDegrees(30.0), 0.5)
         );
 
-        FollowPath command = createCommand(invalidPath, robot);
+        FollowPathV2 command = createCommand(invalidPath, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -630,12 +630,12 @@ class FollowPathTest {
     @Test
     void endStopsCommandedMotion() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Path path = new Path(
             new Path.TranslationTarget(new Translation2d(3.0, 0.0))
         );
 
-        FollowPath command = createCommand(path, robot);
+        FollowPathV2 command = createCommand(path, robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -646,23 +646,23 @@ class FollowPathTest {
 
     @Test
     void rotationOverrideRejectsNullInputs() {
-        assertThrows(IllegalArgumentException.class, () -> FollowPath.overrideRotation(null));
+        assertThrows(IllegalArgumentException.class, () -> FollowPathV2.overrideRotation(null));
         assertThrows(
             IllegalArgumentException.class,
-            () -> FollowPath.overrideRotation(() -> 0.0, null)
+            () -> FollowPathV2.overrideRotation(() -> 0.0, null)
         );
     }
 
     @Test
     void normalRotationRunsWhenOverrideInactive() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
 
-        FollowPath command = createCommand(createDegenerateRotationPath(1.0), robot);
+        FollowPathV2 command = createCommand(createDegenerateRotationPath(1.0), robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -679,14 +679,14 @@ class FollowPathTest {
     @Test
     void rotationOverrideSupplierRunsEachExecute() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         AtomicInteger supplierCalls = new AtomicInteger(0);
-        FollowPath.overrideRotation(() -> {
+        FollowPathV2.overrideRotation(() -> {
             supplierCalls.incrementAndGet();
             return 0.25;
         });
 
-        FollowPath command = createCommand(createDegenerateRotationPath(1.0), robot);
+        FollowPathV2 command = createCommand(createDegenerateRotationPath(1.0), robot);
         command.initialize();
         runExecute(command, robot);
         runExecute(command, robot);
@@ -698,17 +698,17 @@ class FollowPathTest {
     @Test
     void limitedRotationOverrideRespectsPathConstraints() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.overrideRotation(
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.overrideRotation(
             () -> 10.0,
-            FollowPath.RotationOverrideBehavior.RESPECT_CONSTRAINTS
+            FollowPathV2.RotationOverrideBehavior.RESPECT_CONSTRAINTS
         );
 
-        FollowPath command = createCommand(createDegenerateRotationPath(1.0), robot);
+        FollowPathV2 command = createCommand(createDegenerateRotationPath(1.0), robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -723,14 +723,14 @@ class FollowPathTest {
     @Test
     void defaultRotationOverrideSkipsPathFollowerOmegaLimits() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
         Map<String, Double> doubleLogs = new HashMap<>();
         Map<String, Boolean> booleanLogs = new HashMap<>();
-        FollowPath.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
-        FollowPath.overrideRotation(() -> 10.0);
+        FollowPathV2.setDoubleLoggingConsumer((Pair<String, Double> pair) -> doubleLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.setBooleanLoggingConsumer((Pair<String, Boolean> pair) -> booleanLogs.put(pair.getFirst(), pair.getSecond()));
+        FollowPathV2.overrideRotation(() -> 10.0);
 
-        FollowPath command = createCommand(createDegenerateRotationPath(1.0), robot);
+        FollowPathV2 command = createCommand(createDegenerateRotationPath(1.0), robot);
         command.initialize();
         runExecute(command, robot);
 
@@ -747,18 +747,18 @@ class FollowPathTest {
     @Test
     void clearRotationOverrideRestoresNormalRotationForNewCommands() {
         MutableRobot overrideRobot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(overrideRobot::getTimestampSeconds);
-        FollowPath.overrideRotation(() -> 10.0);
-        FollowPath overrideCommand = createCommand(createDegenerateRotationPath(1.0), overrideRobot);
+        FollowPathV2.setTimestampSupplier(overrideRobot::getTimestampSeconds);
+        FollowPathV2.overrideRotation(() -> 10.0);
+        FollowPathV2 overrideCommand = createCommand(createDegenerateRotationPath(1.0), overrideRobot);
         overrideCommand.initialize();
         runExecute(overrideCommand, overrideRobot);
         assertEquals(10.0, overrideRobot.getRobotRelativeSpeeds().omega, 1e-9);
 
-        FollowPath.clearRotationOverride();
+        FollowPathV2.clearRotationOverride();
 
         MutableRobot normalRobot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
-        FollowPath.setTimestampSupplier(normalRobot::getTimestampSeconds);
-        FollowPath normalCommand = createCommand(createDegenerateRotationPath(1.0), normalRobot);
+        FollowPathV2.setTimestampSupplier(normalRobot::getTimestampSeconds);
+        FollowPathV2 normalCommand = createCommand(createDegenerateRotationPath(1.0), normalRobot);
         normalCommand.initialize();
         runExecute(normalCommand, normalRobot);
 
@@ -773,9 +773,9 @@ class FollowPathTest {
             FlippingUtil.symmetryType = FlippingUtil.FieldSymmetry.kRotational;
 
             MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-            FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+            FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
             Translation2d[][] loggedPathTranslations = new Translation2d[1][];
-            FollowPath.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
+            FollowPathV2.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
                 if ("FollowPath/pathTranslations".equals(value.getFirst())) {
                     loggedPathTranslations[0] = value.getSecond();
                 }
@@ -786,15 +786,17 @@ class FollowPathTest {
                 new Path.TranslationTarget(new Translation2d(3.0, 4.0))
             );
 
-            FollowPath command = new FollowPath.Builder(
+            FollowPathV2 command = new FollowPathV2.Builder(
+                DriveType.SWERVE,
                 new TestSubsystem(),
                 robot::getPose,
+                robot::setPose,
                 robot::getRobotRelativeSpeeds,
                 robot::setRobotRelativeSpeeds,
                 new PIDController(5.0, 0.0, 0.0),
                 new PIDController(5.0, 0.0, 0.0),
                 new PIDController(0.0, 0.0, 0.0)
-            ).withShouldMirror(() -> true).build(path);
+            ).build(path).withShouldMirror(() -> true);
             command.initialize();
 
             assertNotNull(loggedPathTranslations[0], "Expected path translation list to be logged during initialization");
@@ -814,9 +816,9 @@ class FollowPathTest {
             FlippingUtil.symmetryType = FlippingUtil.FieldSymmetry.kRotational;
 
             MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-            FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+            FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
             Translation2d[][] loggedPathTranslations = new Translation2d[1][];
-            FollowPath.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
+            FollowPathV2.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
                 if ("FollowPath/pathTranslations".equals(value.getFirst())) {
                     loggedPathTranslations[0] = value.getSecond();
                 }
@@ -827,15 +829,17 @@ class FollowPathTest {
                 new Path.TranslationTarget(new Translation2d(3.0, 4.0))
             );
 
-            FollowPath command = new FollowPath.Builder(
+            FollowPathV2 command = new FollowPathV2.Builder(
+                DriveType.SWERVE,
                 new TestSubsystem(),
                 robot::getPose,
+                robot::setPose,
                 robot::getRobotRelativeSpeeds,
                 robot::setRobotRelativeSpeeds,
                 new PIDController(5.0, 0.0, 0.0),
                 new PIDController(5.0, 0.0, 0.0),
                 new PIDController(0.0, 0.0, 0.0)
-            ).withShouldMirror(() -> false).build(path);
+            ).build(path).withShouldMirror(() -> false);
             command.initialize();
 
             assertNotNull(loggedPathTranslations[0], "Expected path translation list to be logged during initialization");
@@ -855,9 +859,9 @@ class FollowPathTest {
             FlippingUtil.symmetryType = FlippingUtil.FieldSymmetry.kMirrored;
 
             MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
-            FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+            FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
             Translation2d[][] loggedPathTranslations = new Translation2d[1][];
-            FollowPath.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
+            FollowPathV2.setTranslationListLoggingConsumer((Pair<String, Translation2d[]> value) -> {
                 if ("FollowPath/pathTranslations".equals(value.getFirst())) {
                     loggedPathTranslations[0] = value.getSecond();
                 }
@@ -868,9 +872,11 @@ class FollowPathTest {
                 new Path.TranslationTarget(new Translation2d(3.0, 4.0))
             );
 
-            FollowPath command = new FollowPath.Builder(
+            FollowPathV2 command = new FollowPathV2.Builder(
+                DriveType.SWERVE,
                 new TestSubsystem(),
                 robot::getPose,
+                robot::setPose,
                 robot::getRobotRelativeSpeeds,
                 robot::setRobotRelativeSpeeds,
                 new PIDController(5.0, 0.0, 0.0),
@@ -890,21 +896,24 @@ class FollowPathTest {
         }
     }
 
-    private static FollowPath createCommand(Path path, MutableRobot robot) {
+    private static FollowPathV2 createCommand(Path path, MutableRobot robot) {
         return createCommand(path, robot, false);
     }
 
-    private static FollowPath createCommand(Path path, MutableRobot robot, boolean useTRatioBasedTranslationHandoffs) {
-        return new FollowPath.Builder(
+    private static FollowPathV2 createCommand(Path path, MutableRobot robot, boolean useTRatioBasedTranslationHandoffs) {
+        FollowPathV2 command = new FollowPathV2.Builder(
+            DriveType.SWERVE,
             new TestSubsystem(),
             robot::getPose,
+            robot::setPose,
             robot::getRobotRelativeSpeeds,
             robot::setRobotRelativeSpeeds,
             new PIDController(5.0, 0.0, 0.0),
             new PIDController(5.0, 0.0, 0.0),
             new PIDController(0.0, 0.0, 0.0)
-        ).withTRatioBasedTranslationHandoffs(useTRatioBasedTranslationHandoffs)
-            .build(path);
+        ).build(path);
+        command.useProgressHandoffs(useTRatioBasedTranslationHandoffs);
+        return command;
     }
 
     private static Path createDegenerateRotationPath(double targetDegrees) {
@@ -927,9 +936,10 @@ class FollowPathTest {
             Math.abs(speeds.omega) <= epsilon;
     }
 
-    private static void runExecute(FollowPath command, MutableRobot robot) {
+    private static void runExecute(FollowPathV2 command, MutableRobot robot) {
         robot.advanceTime(0.02);
         command.execute();
+        org.wpilib.command2.CommandScheduler.getInstance().getDefaultButtonLoop().poll();
     }
 
     private static final class MutableRobot {

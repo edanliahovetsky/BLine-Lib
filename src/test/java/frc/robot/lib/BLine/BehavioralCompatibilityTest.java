@@ -145,8 +145,7 @@ class BehavioralCompatibilityTest {
         MutableRobot flippedRobot = new MutableRobot();
         Command flippedCommand = builder(flippedRobot)
             .withShouldFlip(() -> true)
-            .withPoseReset(flippedRobot::setPose)
-            .build(loadRepresentativePath())
+            .build(loadRepresentativePath()).withPoseReset()
             .ignoringDisable(true);
 
         scheduleAndRunOnce(flippedCommand);
@@ -156,9 +155,7 @@ class BehavioralCompatibilityTest {
 
         MutableRobot mirroredRobot = new MutableRobot();
         Command mirroredCommand = builder(mirroredRobot)
-            .withShouldMirror(() -> true)
-            .withPoseReset(mirroredRobot::setPose)
-            .build(loadRepresentativePath())
+            .build(loadRepresentativePath()).withPoseReset().withShouldMirror(() -> true)
             .ignoringDisable(true);
 
         scheduleAndRunOnce(mirroredCommand);
@@ -172,8 +169,7 @@ class BehavioralCompatibilityTest {
         MutableRobot robot = new MutableRobot();
         Command command = builder(robot)
             .withDefaultShouldFlip()
-            .withPoseReset(robot::setPose)
-            .build(loadRepresentativePath())
+            .build(loadRepresentativePath()).withPoseReset()
             .ignoringDisable(true);
 
         scheduleAndRunOnce(command);
@@ -184,12 +180,11 @@ class BehavioralCompatibilityTest {
     @Test
     void followerObservesMutableRobotPoseThroughRealCommandScheduler() throws URISyntaxException {
         MutableRobot robot = new MutableRobot();
-        FollowPath follower = builder(robot)
-            .withPoseReset(robot::setPose)
-            .build(loadRepresentativePath());
+        FollowPathV2 follower = builder(robot)
+            .build(loadRepresentativePath()).withPoseReset();
         Command scheduledFollower = follower.ignoringDisable(true);
         AtomicBoolean markerRan = new AtomicBoolean(false);
-        FollowPath.registerEventTrigger(
+        FollowPathV2.registerEventTrigger(
             "behavior-parity-marker",
             Commands.runOnce(() -> markerRan.set(true)).ignoringDisable(true)
         );
@@ -221,10 +216,12 @@ class BehavioralCompatibilityTest {
         assertEquals(0.0, robot.commandedSpeeds.omega, EPSILON);
     }
 
-    private static FollowPath.Builder builder(MutableRobot robot) {
-        return new FollowPath.Builder(
+    private static FollowPathV2.Builder builder(MutableRobot robot) {
+        return new FollowPathV2.Builder(
+            DriveType.SWERVE,
             new TestDriveSubsystem(),
             robot::getPose,
+            robot::setPose,
             robot::getSpeeds,
             robot::acceptSpeeds,
             new PIDController(2.0, 0.0, 0.0),

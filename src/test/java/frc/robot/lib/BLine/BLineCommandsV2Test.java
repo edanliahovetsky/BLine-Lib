@@ -20,7 +20,7 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-class BLineCommandsTest {
+class BLineCommandsV2Test {
     private CommandScheduler scheduler;
 
     @AfterEach
@@ -37,7 +37,7 @@ class BLineCommandsTest {
     void sequenceDoesNotInheritChildRequirements() {
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.sequence(requiringCommand(subsystem));
+        Command command = BLineCommandsV2.sequence(requiringCommand(subsystem));
 
         assertTrue(command.getRequirements().isEmpty(), "Sequence should only see proxy requirements");
     }
@@ -46,7 +46,7 @@ class BLineCommandsTest {
     void repeatingSequenceDoesNotInheritChildRequirements() {
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.repeatingSequence(requiringCommand(subsystem));
+        Command command = BLineCommandsV2.repeatingSequence(requiringCommand(subsystem));
 
         assertTrue(command.getRequirements().isEmpty(), "Repeating sequence should only see proxy requirements");
     }
@@ -55,7 +55,7 @@ class BLineCommandsTest {
     void parallelDoesNotInheritChildRequirements() {
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.parallel(requiringCommand(subsystem));
+        Command command = BLineCommandsV2.parallel(requiringCommand(subsystem));
 
         assertTrue(command.getRequirements().isEmpty(), "Parallel group should only see proxy requirements");
     }
@@ -65,7 +65,7 @@ class BLineCommandsTest {
         TestSubsystem subsystem = new TestSubsystem();
 
         assertDoesNotThrow(() ->
-            BLineCommands.parallel(
+            BLineCommandsV2.parallel(
                 requiringCommand(subsystem),
                 requiringCommand(subsystem)
             )
@@ -76,7 +76,7 @@ class BLineCommandsTest {
     void raceDoesNotInheritChildRequirements() {
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.race(requiringCommand(subsystem));
+        Command command = BLineCommandsV2.race(requiringCommand(subsystem));
 
         assertTrue(command.getRequirements().isEmpty(), "Race group should only see proxy requirements");
     }
@@ -86,7 +86,7 @@ class BLineCommandsTest {
         TestSubsystem deadlineSubsystem = new TestSubsystem();
         TestSubsystem parallelSubsystem = new TestSubsystem();
 
-        Command command = BLineCommands.deadline(
+        Command command = BLineCommandsV2.deadline(
             requiringCommand(deadlineSubsystem),
             requiringCommand(parallelSubsystem)
         );
@@ -99,7 +99,7 @@ class BLineCommandsTest {
         TestSubsystem trueSubsystem = new TestSubsystem();
         TestSubsystem falseSubsystem = new TestSubsystem();
 
-        Command command = BLineCommands.either(
+        Command command = BLineCommandsV2.either(
             requiringCommand(trueSubsystem),
             requiringCommand(falseSubsystem),
             () -> true
@@ -116,7 +116,7 @@ class BLineCommandsTest {
         commands.put("a", requiringCommand(aSubsystem));
         commands.put("b", requiringCommand(bSubsystem));
 
-        Command command = BLineCommands.select(commands, () -> "a");
+        Command command = BLineCommandsV2.select(commands, () -> "a");
 
         assertTrue(command.getRequirements().isEmpty(), "Select command should only see proxy requirements");
     }
@@ -126,7 +126,7 @@ class BLineCommandsTest {
         TestSubsystem explicitSubsystem = new TestSubsystem();
         TestSubsystem suppliedSubsystem = new TestSubsystem();
 
-        Command command = BLineCommands.defer(
+        Command command = BLineCommandsV2.defer(
             () -> requiringCommand(suppliedSubsystem),
             Set.of(explicitSubsystem)
         );
@@ -139,7 +139,7 @@ class BLineCommandsTest {
     void deferredProxyDoesNotDeclareRequirements() {
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.deferredProxy(() -> requiringCommand(subsystem));
+        Command command = BLineCommandsV2.deferredProxy(() -> requiringCommand(subsystem));
 
         assertTrue(command.getRequirements().isEmpty(), "Deferred proxy should not declare supplied requirements");
     }
@@ -179,7 +179,7 @@ class BLineCommandsTest {
         Command eventCommand = runOnceDisabled(() -> eventRan.set(true), sharedSubsystem);
         Command pathCommand = new EventSchedulingCommand(driveSubsystem, eventCommand, eventRan);
 
-        Command auto = BLineCommands.sequence(
+        Command auto = BLineCommandsV2.sequence(
             runOnceDisabled(() -> {}, sharedSubsystem),
             pathCommand,
             runOnceDisabled(() -> postRan.set(true), sharedSubsystem)
@@ -200,7 +200,7 @@ class BLineCommandsTest {
         AtomicBoolean ran = new AtomicBoolean(false);
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.either(
+        Command command = BLineCommandsV2.either(
             runOnceDisabled(() -> ran.set(true), subsystem),
             Commands.none(),
             () -> true
@@ -221,7 +221,7 @@ class BLineCommandsTest {
         commands.put("selected", runOnceDisabled(() -> ran.set(true), subsystem));
         commands.put("other", Commands.none());
 
-        Command command = BLineCommands.select(commands, () -> "selected");
+        Command command = BLineCommandsV2.select(commands, () -> "selected");
 
         scheduler.schedule(command);
         runSchedulerUntil(() -> ran.get(), 10);
@@ -235,7 +235,7 @@ class BLineCommandsTest {
         AtomicBoolean ran = new AtomicBoolean(false);
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.defer(
+        Command command = BLineCommandsV2.defer(
             () -> runOnceDisabled(() -> ran.set(true), subsystem),
             Set.of()
         );
@@ -252,7 +252,7 @@ class BLineCommandsTest {
         AtomicBoolean ran = new AtomicBoolean(false);
         TestSubsystem subsystem = new TestSubsystem();
 
-        Command command = BLineCommands.deferredProxy(
+        Command command = BLineCommandsV2.deferredProxy(
             () -> runOnceDisabled(() -> ran.set(true), subsystem)
         );
 
@@ -280,7 +280,7 @@ class BLineCommandsTest {
 
     private static boolean isWpilibHalRuntimeAvailable() {
         try {
-            ClassLoader classLoader = BLineCommandsTest.class.getClassLoader();
+            ClassLoader classLoader = BLineCommandsV2Test.class.getClassLoader();
             Class.forName("org.wpilib.hardware.hal.NotifierJNI", false, classLoader);
             Class.forName("org.wpilib.networktables.NetworkTableInstance", false, classLoader);
             Class.forName("com.fasterxml.jackson.databind.ObjectMapper", false, classLoader);

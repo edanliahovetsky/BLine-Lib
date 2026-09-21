@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class Vendordep2027Test {
     private static final String BLINE_UUID = "4b7270e9-4e8d-4e7b-8cf0-5805f12c3c7d";
-    private static final String CANDIDATE_TAG = "v0.9.1-wpilib2027.alpha06.01";
+    private static final String CANDIDATE_TAG = "v2027.0.0-beta.1";
 
     @Test
     void compatibilityVendordepIdentifiesThe2027LineAndExactCandidateTag() throws Exception {
@@ -20,8 +20,8 @@ class Vendordep2027Test {
         JSONObject compatibility = parse("BLine-Lib-2027.json");
 
         assertEquals("BLine-Lib-2027.json", compatibility.get("fileName"));
-        assertEquals("0.9.1-wpilib2027.alpha06.01", compatibility.get("version"));
-        assertEquals("2027_alpha5", compatibility.get("wpilibYear"));
+        assertEquals("2027.0.0-beta.1", compatibility.get("version"));
+        assertEquals("2027_alpha7", compatibility.get("wpilibYear"));
         assertEquals(BLINE_UUID, compatibility.get("uuid"));
         assertNotEquals(stable.get("jsonUrl"), compatibility.get("jsonUrl"));
         assertEquals(
@@ -30,16 +30,13 @@ class Vendordep2027Test {
         );
 
         JSONArray dependencies = (JSONArray) compatibility.get("javaDependencies");
-        assertEquals(2, dependencies.size());
+        assertEquals(1, dependencies.size(), "The robot project selects its command framework");
+        assertEquals(null, compatibility.get("conflictsWith"));
         JSONObject bline = (JSONObject) dependencies.getFirst();
         assertEquals("com.github.edanliahovetsky", bline.get("groupId"));
         assertEquals("BLine-Lib", bline.get("artifactId"));
         assertEquals(CANDIDATE_TAG, bline.get("version"));
 
-        JSONObject commandsV2 = (JSONObject) dependencies.get(1);
-        assertEquals("org.wpilib.commandsv2", commandsV2.get("groupId"));
-        assertEquals("commandsv2-java", commandsV2.get("artifactId"));
-        assertEquals("wpilib", commandsV2.get("version"));
     }
 
     private static JSONObject parse(String fileName) throws Exception {

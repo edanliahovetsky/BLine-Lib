@@ -17,14 +17,14 @@ import frc.robot.lib.BLine.Path.TranslationTarget;
 import frc.robot.lib.BLine.Path.TranslationTargetConstraint;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
+import java.util.Objects;
 
 
 /**
@@ -64,7 +64,8 @@ final class Follower {
     private static Consumer<Pair<String, Translation2d[]>> translationListLoggingConsumer = value -> {};
     private static Consumer<Pair<String, Double>> doubleLoggingConsumer = value -> {};
     private static Consumer<Pair<String, Boolean>> booleanLoggingConsumer = value -> {};
-    private static final Map<String, Runnable> eventTriggerRegistry = new HashMap<>();
+    private final PendingEvents events;
+    private PendingEvents.Execution eventExecution;
     private static volatile DoubleSupplier rotationOverrideSupplier = null;
     private static volatile RotationOverrideBehavior rotationOverrideBehavior =
         RotationOverrideBehavior.BYPASS_CONSTRAINTS;
@@ -79,15 +80,6 @@ final class Follower {
 
     private static void logPose(String key, Pose2d value) {
         poseLoggingConsumer.accept(new Pair<>(key, value));
-    }
-
-    /** Registers the framework-neutral action invoked when an event marker is reached. */
-    static void registerEventTrigger(String key, Runnable action) {
-        if (key == null || key.isEmpty() || action == null) {
-            logger.warning("FollowPath: Ignoring invalid event trigger registration");
-            return;
-        }
-        eventTriggerRegistry.put(key, action);
     }
 
     /**
@@ -219,14 +211,18 @@ final class Follower {
     }
     
     
-    private final Path path;
+    private final Path sourcePath;
+    private Path path;
+    private boolean initialized;
+    private boolean active;
+    private boolean resetPose;
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisVelocities> robotRelativeSpeedsSupplier;
     private final Consumer<ChassisVelocities> robotRelativeSpeedsConsumer;
-    private final Supplier<Boolean> shouldFlipPathSupplier;
-    private final Supplier<Boolean> shouldMirrorPathSupplier;
+    private BooleanSupplier shouldFlipPathSupplier;
+    private BooleanSupplier shouldMirrorPathSupplier;
     private final Consumer<Pose2d> poseResetConsumer;
-    private final boolean useTRatioBasedTranslationHandoffs;
+    boolean useTRatioBasedTranslationHandoffs;
     
     private int rotationElementIndex = NO_ACTIVE_ROTATION_INDEX;
     private int translationElementIndex = 0;
@@ -276,69 +272,82 @@ final class Follower {
         int previousRotationIndex
     ) {}
 
-    Follower(
-        Path path, 
-        Supplier<Pose2d> poseSupplier, 
-        Supplier<ChassisVelocities> robotRelativeSpeedsSupplier,
-        Consumer<ChassisVelocities> robotRelativeSpeedsConsumer,
-        Supplier<Boolean> shouldFlipPathSupplier,
-        Supplier<Boolean> shouldMirrorPathSupplier,
-        Consumer<Pose2d> poseResetConsumer,
-        boolean useTRatioBasedTranslationHandoffs,
-        PIDController translationController, 
-        PIDController rotationController,
-        PIDController crossTrackController
-    ) {
-        if (translationController == null || rotationController == null || crossTrackController == null) {
-            throw new IllegalArgumentException("Controllers must be provided and must not be null");
-        }
+    private final DriveType driveType;
+    private DriveDirection direction = DriveDirection.FORWARD;
 
-        this.path = path.copy();
-        this.poseSupplier = poseSupplier;
-        this.robotRelativeSpeedsSupplier = robotRelativeSpeedsSupplier;
-        this.robotRelativeSpeedsConsumer = robotRelativeSpeedsConsumer;
-        this.shouldFlipPathSupplier = shouldFlipPathSupplier;
-        this.shouldMirrorPathSupplier = shouldMirrorPathSupplier;
-        this.poseResetConsumer = poseResetConsumer;
-        this.useTRatioBasedTranslationHandoffs = useTRatioBasedTranslationHandoffs;
-        this.translationController = translationController;
-        this.rotationController = rotationController;
-        this.crossTrackController = crossTrackController;
-        
-        configureControllers();
-        
+    Follower(Path path, FollowerConfig config, BooleanSupplier shouldFlip, PendingEvents events) {
+        this.events = events;
+        sourcePath = Objects.requireNonNull(path, "path");
+        this.path = path;
+        driveType = config.driveType();
+        poseSupplier = config.pose();
+        poseResetConsumer = config.resetPose();
+        robotRelativeSpeedsSupplier = config.measuredVelocity();
+        robotRelativeSpeedsConsumer = config.output();
+        translationController = config.translation();
+        rotationController = config.rotation();
+        crossTrackController = config.crossTrack();
+        shouldFlipPathSupplier = shouldFlip;
     }
 
+    void withTankDriveDirection(DriveDirection direction) {
+        requireInactive();
+        this.direction = Objects.requireNonNull(direction, "direction");
+    }
+
+    void withShouldFlip(BooleanSupplier supplier) {
+        requireInactive();
+        shouldFlipPathSupplier = Objects.requireNonNull(supplier, "shouldFlip");
+    }
+
+    void withShouldMirror(BooleanSupplier supplier) {
+        requireInactive();
+        shouldMirrorPathSupplier = Objects.requireNonNull(supplier, "shouldMirror");
+    }
+
+    void withPoseReset() {
+        requireInactive();
+        resetPose = true;
+    }
+
+    private void requireInactive() {
+        if (active) throw new IllegalStateException("Cannot reconfigure a running path command");
+    }
 
     void initialize() {
-        if (translationController == null || rotationController == null) {
-            throw new IllegalArgumentException("Translation and rotation controllers must be provided and must not be null");
-        }
-
-        if (!path.isValid()) {
-            logger.log(java.util.logging.Level.WARNING, "FollowPath: Path invalid - skipping initialization");
+        initialized = false;
+        active = true;
+        eventExecution = new PendingEvents.Execution();
+        pathElementsWithConstraints = new ArrayList<>();
+        cachedRemainingDistance = 0.0;
+        path = sourcePath.copy();
+        if (driveType != DriveType.TANK && direction != DriveDirection.FORWARD) {
+            logger.warning("FollowPath: BACKWARD tank drive direction requires DriveType.TANK");
             return;
         }
-
-        if (shouldFlipPathSupplier.get()) {
-            path.flip();
+        if (driveType == DriveType.TANK) {
+            throw new UnsupportedOperationException("Tank controller implementation is not included in this development checkpoint");
         }
-        if (shouldMirrorPathSupplier.get()) {
-            path.mirror();
+        var error = path.validationError();
+        if (error.isPresent()) {
+            logger.warning("FollowPath: " + error.get());
+            return;
         }
+        if (shouldFlipPathSupplier != null) path.setFlipped(shouldFlipPathSupplier.getAsBoolean());
+        if (shouldMirrorPathSupplier != null) path.setMirrored(shouldMirrorPathSupplier.getAsBoolean());
+        // Resolve constraints before any reset or event can have a side effect.
         pathElementsWithConstraints = path.getPathElementsWithConstraintsNoWaypoints();
-
-        // Resolve and apply start pose once so all segment-relative calculations share a stable origin.
-        if (pathElementsWithConstraints.isEmpty()) {
-            throw new IllegalStateException("Path must contain at least one element");
+        if (resetPose) {
+            if (path.hasAuthoredStart()) {
+                poseResetConsumer.accept(path.authoredStartPose(poseSupplier.get().getRotation()));
+            } else {
+                logger.warning("FollowPath: Pose reset skipped because the path has no authored start");
+            }
         }
-
-        Pose2d startPose = path.getStartPose(poseSupplier.get().getRotation());
-        poseResetConsumer.accept(startPose);
 
         // Reset traversal state for a fresh command run.
         rotationElementIndex = NO_ACTIVE_ROTATION_INDEX;
-        translationElementIndex = 0;
+        translationElementIndex = findNextTranslationTargetIndex(0);
         eventTriggerElementIndex = 0;
         firedEventTriggerIndices.clear();
         firedEventTriggerCount = 0;
@@ -350,7 +359,9 @@ final class Follower {
         currentRotationTargetInitRad = pathInitStartPose.getRotation().getRadians();
         rotationController.reset();
         translationController.reset();
+        crossTrackController.reset();
         configureControllers();
+        initialized = true;
 
         ArrayList<Translation2d> pathTranslations = new ArrayList<>();
         robotTranslations.clear();
@@ -365,8 +376,7 @@ final class Follower {
     }
 
     void execute() {
-        if (!path.isValid()) {
-            logger.log(java.util.logging.Level.WARNING, "FollowPath: Path invalid - skipping execution");
+        if (!initialized) {
             stopCommandedMotion();
             return;
         }
@@ -1116,12 +1126,7 @@ final class Follower {
                 break;
             }
             EventTrigger trigger = (EventTrigger) element;
-            Runnable action = eventTriggerRegistry.get(trigger.libKey());
-            if (action != null) {
-                action.run();
-            } else {
-                logger.warning("FollowPath: Unregistered event trigger key: " + trigger.libKey());
-            }
+            events.enqueue(eventExecution, trigger.libKey());
             firedEventTriggerIndices.add(eventTriggerElementIndex);
             firedEventTriggerCount++;
             eventTriggerElementIndex++;
@@ -1141,7 +1146,7 @@ final class Follower {
         if (isEventTriggerNextSegment(eventIndex)) { return false; }
         if (isEventTriggerPreviousSegment(eventIndex)) { return true; }
 
-        Translation2d translationA = null;
+        Translation2d translationA = pathInitStartPose.getTranslation();
         Translation2d translationB = null;
         for (int i = eventIndex - 1; i >= 0; i--) {
             if (pathElementsWithConstraints.get(i).getFirst() instanceof TranslationTarget) {
@@ -1190,8 +1195,7 @@ final class Follower {
     }
 
     boolean isFinished() { // TODO add final velocity tolerance
-        if (!path.isValid()) {
-            logger.log(java.util.logging.Level.WARNING, "FollowPath: Path invalid - finishing early");
+        if (!initialized) {
             return true;
         }
 
@@ -1229,6 +1233,8 @@ final class Follower {
     }
 
     void end(boolean interrupted) {
+        active = false;
+        if (interrupted) events.cancel(eventExecution);
         stopCommandedMotion();
     }
 
@@ -1269,7 +1275,7 @@ final class Follower {
      * @return Remaining path distance in meters
      */
     double getRemainingPathDistanceMeters() {
-        if (!path.isValid() ||
+        if (!initialized ||
             pathElementsWithConstraints.isEmpty() ||
             !isTranslationTargetAt(translationElementIndex)) {
             return 0.0;

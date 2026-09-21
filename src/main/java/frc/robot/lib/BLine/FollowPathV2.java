@@ -11,13 +11,12 @@ import org.wpilib.math.controller.PIDController;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.kinematics.ChassisVelocities;
-import org.wpilib.command3.Command;
-import org.wpilib.command3.Mechanism;
-import org.wpilib.command3.Coroutine;
-import org.wpilib.command3.Scheduler;
+import org.wpilib.command2.Command;
+import org.wpilib.command2.Subsystem;
+import org.wpilib.command2.CommandScheduler;
 
 /**
- * Point-to-point following through WPILib Commands v3.
+ * Point-to-point following through WPILib Commands v2.
  *
  * <p>Construct a reusable {@link Builder} with robot wiring, then configure execution choices on
  * each returned command. A command reads a fresh copy of its source path when execution begins.
@@ -29,16 +28,15 @@ import org.wpilib.command3.Scheduler;
  * Supply a distinct controller set for independently running drivetrains. Controller tuning,
  * including integral limits and period, is retained; accumulated state resets each execution.
  */
-public final class FollowPath implements Command {
+public final class FollowPathV2 extends Command {
     private static final PendingEvents EVENTS = createEvents();
     private final Follower follower;
 
     private static PendingEvents createEvents() {
         PendingEvents events = new PendingEvents();
-        Scheduler.getDefault().getDefaultEventLoop().bind(events::dispatch);
+        CommandScheduler.getInstance().getDefaultButtonLoop().bind(events::dispatch);
         return events;
     }
-    private final Set<Mechanism> requirements;
     /**
      * Determines how a rotation override interacts with BLine's normal constraints.
      */
@@ -72,14 +70,14 @@ public final class FollowPath implements Command {
      */
     public static void registerEventTrigger(String key, Command command) {
         Objects.requireNonNull(command, "eventCommand");
-        EVENTS.register(key, () -> Scheduler.getDefault().schedule(command));
+        EVENTS.register(key, () -> CommandScheduler.getInstance().schedule(command));
     }
 
     /** Clears queued events for this framework without cancelling already scheduled commands. */
     public static void clearPendingEventTriggers() { EVENTS.clear(); }
 
     /**
-     * Overrides the rotational output of all {@code FollowPath} commands.
+     * Overrides the rotational output of all {@code FollowPathV2} commands.
      *
      * <p>The supplier is called every execution cycle while active and must return omega in
      * radians per second. This overload bypasses BLine's rotational velocity and acceleration
@@ -96,7 +94,7 @@ public final class FollowPath implements Command {
     }
 
     /**
-     * Overrides the rotational output of all {@code FollowPath} commands.
+     * Overrides the rotational output of all {@code FollowPathV2} commands.
      *
      * <p>The supplier is called every execution cycle while active and must return omega in
      * radians per second. Use {@link RotationOverrideBehavior#RESPECT_CONSTRAINTS}
@@ -179,7 +177,7 @@ public final class FollowPath implements Command {
 
     /** Stable robot configuration, shared by the independently configured commands it builds. */
     public static final class Builder {
-        private final Mechanism drive;
+        private final Subsystem drive;
         private final FollowerConfig config;
         private BooleanSupplier shouldFlip;
 
@@ -194,7 +192,7 @@ public final class FollowPath implements Command {
          * @param rotation continuous heading PID (radians to rad/s)
          * @param crossTrack cross-track distance PID (metres to m/s)
          */
-        public Builder(DriveType driveType, Mechanism drive, Supplier<Pose2d> poseSupplier,
+        public Builder(DriveType driveType, Subsystem drive, Supplier<Pose2d> poseSupplier,
             Consumer<Pose2d> resetPose, Supplier<ChassisVelocities> measuredVelocity,
             Consumer<ChassisVelocities> output, PIDController translation,
             PIDController rotation, PIDController crossTrack) {
@@ -224,14 +222,14 @@ public final class FollowPath implements Command {
          * @param path mutable authored path, snapshotted at each execution
          * @return a new independently configurable command
          */
-        public FollowPath build(Path path) {
-            return new FollowPath(drive, new Follower(path, config, shouldFlip, EVENTS));
+        public FollowPathV2 build(Path path) {
+            return new FollowPathV2(drive, new Follower(path, config, shouldFlip, EVENTS));
         }
     }
 
-    private FollowPath(Mechanism drive, Follower follower) {
+    private FollowPathV2(Subsystem drive, Follower follower) {
         this.follower = follower;
-        requirements = Set.of(drive);
+        addRequirements(drive);
     }
 
     /**
@@ -239,21 +237,21 @@ public final class FollowPath implements Command {
      * reports one warning and skips reset; its execution origin is the measured pose instead.
      * @return this command
      */
-    public FollowPath withPoseReset() { follower.withPoseReset(); return this; }
+    public FollowPathV2 withPoseReset() { follower.withPoseReset(); return this; }
 
     /**
      * Overrides only this command's flip policy, evaluated once per execution.
      * @param supplier desired flipped state
      * @return this command
      */
-    public FollowPath withShouldFlip(BooleanSupplier supplier) { follower.withShouldFlip(supplier); return this; }
+    public FollowPathV2 withShouldFlip(BooleanSupplier supplier) { follower.withShouldFlip(supplier); return this; }
 
     /**
      * Sets only this command's reflection policy, evaluated once per execution.
      * @param supplier desired mirrored state
      * @return this command
      */
-    public FollowPath withShouldMirror(BooleanSupplier supplier) { follower.withShouldMirror(supplier); return this; }
+    public FollowPathV2 withShouldMirror(BooleanSupplier supplier) { follower.withShouldMirror(supplier); return this; }
 
     /**
      * Selects which end of a tank robot leads along the path. Backward is invalid for holonomic
@@ -261,7 +259,7 @@ public final class FollowPath implements Command {
      * @param direction forward or backward travel
      * @return this command
      */
-    public FollowPath withTankDriveDirection(DriveDirection direction) {
+    public FollowPathV2 withTankDriveDirection(DriveDirection direction) {
         follower.withTankDriveDirection(direction); return this;
     }
 
@@ -276,24 +274,14 @@ public final class FollowPath implements Command {
 
     void useProgressHandoffs(boolean enabled) { follower.useTRatioBasedTranslationHandoffs = enabled; }
 
-    @Override public String name() { return "FollowPath"; }
-    @Override public Set<Mechanism> requirements() { return requirements; }
-
-    @Override
-    public void run(Coroutine co) {
-        try {
-            follower.initialize();
-            do {
-                follower.execute();
-                if (follower.isFinished()) break;
-                co.yield();
-            } while (true);
-            follower.end(false);
-        } catch (RuntimeException | Error error) {
-            follower.end(true);
-            throw error;
-        }
+    @Override public void initialize() {
+        try { follower.initialize(); }
+        catch (RuntimeException | Error error) { follower.end(true); throw error; }
     }
-
-    @Override public void onCancel() { follower.end(true); }
+    @Override public void execute() {
+        try { follower.execute(); }
+        catch (RuntimeException | Error error) { follower.end(true); throw error; }
+    }
+    @Override public boolean isFinished() { return follower.isFinished(); }
+    @Override public void end(boolean interrupted) { follower.end(interrupted); }
 }

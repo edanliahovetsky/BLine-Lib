@@ -1,30 +1,18 @@
 {
     "fileName": "BLine-Lib-2027.json",
-    "name": "BLine-Lib (WPILib 2027 Alpha 6)",
-    "version": "0.9.1-wpilib2027.alpha06.01",
-    "wpilibYear": "2027_alpha5",
+    "name": "BLine-Lib 2027 Beta",
+    "version": "2027.0.0-beta.1",
+    "wpilibYear": "2027_alpha7",
     "uuid": "4b7270e9-4e8d-4e7b-8cf0-5805f12c3c7d",
     "mavenUrls": [
         "https://jitpack.io"
     ],
     "jsonUrl": "https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json",
-    "conflictsWith": [
-        {
-            "uuid": "4decdc05-a056-46cf-9561-39449bbb01306",
-            "errorMessage": "BLine-Lib for WPILib 2027 uses Commands v2 and cannot be installed with Commands v3.",
-            "offlineFileName": "CommandsV3.json"
-        }
-    ],
     "javaDependencies": [
         {
             "groupId": "com.github.edanliahovetsky",
             "artifactId": "BLine-Lib",
-            "version": "v0.9.1-wpilib2027.alpha06.01"
-        },
-        {
-            "groupId": "org.wpilib.commandsv2",
-            "artifactId": "commandsv2-java",
-            "version": "wpilib"
+            "version": "v2027.0.0-beta.1"
         }
     ],
     "jniDependencies": [],

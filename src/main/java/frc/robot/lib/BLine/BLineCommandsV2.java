@@ -23,7 +23,7 @@ import java.util.function.Supplier;
  * <p>This is useful when a path contains event triggers:
  *
      * <pre>{@code
-     * import static frc.robot.lib.BLine.BLineCommands.sequence;
+     * import static frc.robot.lib.BLine.BLineCommandsV2.sequence;
      * import org.wpilib.command2.Command;
      *
      * Command auto = sequence(
@@ -40,8 +40,8 @@ import java.util.function.Supplier;
  * @see Commands
  * @see Command#asProxy()
  */
-public final class BLineCommands {
-    private BLineCommands() {
+public final class BLineCommandsV2 {
+    private BLineCommandsV2() {
         throw new UnsupportedOperationException("This is a utility class");
     }
 
