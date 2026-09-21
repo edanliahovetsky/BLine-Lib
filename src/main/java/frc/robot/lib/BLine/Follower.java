@@ -474,7 +474,14 @@ final class Follower {
             // Preserve the achievable incoming command, including final queued events.
             // Do not invent an instantaneous speed/heading change at the endpoint.
             rollingHandoff = true;
-            robotRelativeSpeedsConsumer.accept(lastSpeeds.toRobotRelative(currentPose.getRotation()));
+            if (driveType == DriveType.TANK) {
+                // A tank retains its body-frame forward speed and turn rate. Reprojecting
+                // the previous field vector at a newer heading would introduce lateral motion.
+                var command = tankController.commandedVelocity();
+                robotRelativeSpeedsConsumer.accept(new ChassisVelocities(command.forward(), 0, command.omega()));
+            } else {
+                robotRelativeSpeedsConsumer.accept(lastSpeeds.toRobotRelative(currentPose.getRotation()));
+            }
             return;
         }
         double angleToTarget = Math.atan2(

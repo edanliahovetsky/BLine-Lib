@@ -55,5 +55,6 @@ final class TankController {
     }
 
     void overrideOmega(double omega) { command = new TankRateLimiter.Velocity(command.forward(), omega); }
+    TankRateLimiter.Velocity commandedVelocity() { return command; }
     boolean finished() { return phase == Phase.DONE; }
 }

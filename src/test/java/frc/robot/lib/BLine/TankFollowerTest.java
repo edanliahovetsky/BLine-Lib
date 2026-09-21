@@ -76,6 +76,34 @@ class TankFollowerTest {
         }
     }
 
+    @Test void rollingExitPreservesTheRobotRelativeCommandWhileTurning() {
+        for (DriveDirection direction : DriveDirection.values()) {
+            Rig rig = new Rig(new Pose2d(0, 0,
+                new Rotation2d(direction == DriveDirection.BACKWARD ? Math.PI : 0)));
+            Path path = new Path(constraints().setMinVelocityMetersPerSec(0.8),
+                new Path.TranslationTarget(2, 1));
+            Follower follower = rig.follower(path);
+            follower.withTankDriveDirection(direction);
+            follower.initialize();
+            ChassisVelocities incoming = rig.output;
+            for (int i = 0; i < 2000 && !follower.isFinished(); i++) {
+                incoming = rig.output;
+                rig.step(follower);
+                assertEquals(0, rig.output.vy, 0, "Tank cannot command sideways motion, including at completion");
+            }
+            assertTrue(follower.isFinished());
+            assertTrue(Math.abs(incoming.omega) > 0.01, "Exercise a rolling exit while still turning");
+            assertEquals(incoming.vx, rig.output.vx, 0);
+            assertEquals(incoming.omega, rig.output.omega, 0);
+            follower.end(false);
+            assertEquals(incoming.vx, rig.output.vx, 0);
+            assertEquals(incoming.omega, rig.output.omega, 0);
+            follower.end(true);
+            assertEquals(0, rig.output.vx, 0);
+            assertEquals(0, rig.output.omega, 0);
+        }
+    }
+
     private static Path.PathConstraints constraints() {
         return new Path.PathConstraints().setMaxVelocityMetersPerSec(3.5).setMaxAccelerationMetersPerSec2(2)
             .setMaxVelocityDegPerSec(Math.toDegrees(2.5)).setMaxAccelerationDegPerSec2(Math.toDegrees(4))
