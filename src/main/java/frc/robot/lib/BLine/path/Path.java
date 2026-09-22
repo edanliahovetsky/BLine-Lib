@@ -990,16 +990,17 @@ public class Path {
     }
 
     /**
-     * Checks the current elements without changing the path or logging. Following revalidates a
-     * fresh snapshot at each execution, so edits made after construction are included.
+     * Checks the current elements and resolved motion constraints without changing the path or logging.
+     * Following uses the same validation on a fresh snapshot at each execution. Construction and
+     * editing do not require a valid path. Follower-specific options are checked at execution instead.
      *
      * @return whether the current path can be prepared for following
      */
     public boolean isValid() {
-        return validationError().isEmpty();
+        return PreparedPath.validationError(this).isEmpty();
     }
 
-    Optional<String> validationError() {
+    Optional<String> elementValidationError() {
         if (pathElements.isEmpty()) return Optional.of("Path has no destination");
         PathElement last = pathElements.getLast();
         if (!(last instanceof Waypoint || last instanceof TranslationTarget)) {
@@ -1162,14 +1163,22 @@ public class Path {
      * 
      * @param newOrder List of indices specifying the new order
      * @return This path for chaining
-     * @throws IllegalArgumentException if newOrder doesn't match the number of elements
+     * @throws IllegalArgumentException if newOrder is not a permutation of all existing indices
      */
     public Path reorderElements(List<Integer> newOrder) {
-        if (newOrder.size() != pathElements.size()) {
+        if (newOrder == null || newOrder.size() != pathElements.size()) {
             throw new IllegalArgumentException("New order must match elements length");
         }
+        boolean[] seen = new boolean[pathElements.size()];
         List<PathElement> reordered = new ArrayList<>(pathElements.size());
-        for (int i : newOrder) {
+        for (Integer i : newOrder) {
+            if (i == null || i < 0 || i >= seen.length) {
+                throw new IllegalArgumentException("New order contains an invalid element index: " + i);
+            }
+            if (seen[i]) {
+                throw new IllegalArgumentException("New order repeats element index " + i);
+            }
+            seen[i] = true;
             reordered.add(pathElements.get(i));
         }
         this.pathElements = reordered;
@@ -1195,7 +1204,7 @@ public class Path {
      */
     public List<Translation2d> getTranslations() {
         List<Translation2d> translations = new ArrayList<>();
-        if (!isValid()) {
+        if (elementValidationError().isPresent()) {
             return translations;
         }
 
@@ -1244,13 +1253,14 @@ public class Path {
         int ordinal,
         Optional<ArrayList<RangedConstraint>> maxConstraints,
         Optional<ArrayList<RangedConstraint>> minConstraints,
-        double globalMaxValue
+        double globalMaxValue,
+        boolean reportWarnings
     ) {
         double maxValue = findRangedConstraintValue(maxConstraints, ordinal).orElse(globalMaxValue);
         double minValue = findRangedConstraintValue(minConstraints, ordinal).orElse(0.0);
 
         if (minValue > maxValue) {
-            logger.log(
+            if (reportWarnings) logger.log(
                 Level.WARNING,
                 "Path constraint conflict for {0} at ordinal {1}: minimum {2} exceeds maximum {3}; using global default {4} and disabling the minimum baseline",
                 new Object[] { label, ordinal, minValue, maxValue, globalMaxValue }
@@ -1278,7 +1288,11 @@ public class Path {
      * @return List of (PathElement, PathElementConstraint) pairs
      */
     List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints() {
-        if (!isValid()) {
+        return getPathElementsWithConstraints(true);
+    }
+
+    private List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints(boolean reportWarnings) {
+        if (elementValidationError().isPresent()) {
             return new ArrayList<>();
         }
         
@@ -1292,7 +1306,7 @@ public class Path {
                     translationOrdinal,
                     pathConstraints.getMaxVelocityMetersPerSec(),
                     pathConstraints.getMinVelocityMetersPerSec(),
-                    defaultGlobalConstraints.getMaxVelocityMetersPerSec()
+                    defaultGlobalConstraints.getMaxVelocityMetersPerSec(), reportWarnings
                 );
                 double translationAcceleration = resolveMaxConstraintValue(
                     pathConstraints.getMaxAccelerationMetersPerSec2(),
@@ -1304,7 +1318,7 @@ public class Path {
                     rotationOrdinal,
                     pathConstraints.getMaxVelocityDegPerSec(),
                     pathConstraints.getMinVelocityDegPerSec(),
-                    defaultGlobalConstraints.getMaxVelocityDegPerSec()
+                    defaultGlobalConstraints.getMaxVelocityDegPerSec(), reportWarnings
                 );
                 double rotationAcceleration = resolveMaxConstraintValue(
                     pathConstraints.getMaxAccelerationDegPerSec2(),
@@ -1334,7 +1348,7 @@ public class Path {
                     translationOrdinal,
                     pathConstraints.getMaxVelocityMetersPerSec(),
                     pathConstraints.getMinVelocityMetersPerSec(),
-                    defaultGlobalConstraints.getMaxVelocityMetersPerSec()
+                    defaultGlobalConstraints.getMaxVelocityMetersPerSec(), reportWarnings
                 );
                 double translationAcceleration = resolveMaxConstraintValue(
                     pathConstraints.getMaxAccelerationMetersPerSec2(),
@@ -1360,7 +1374,7 @@ public class Path {
                     rotationOrdinal,
                     pathConstraints.getMaxVelocityDegPerSec(),
                     pathConstraints.getMinVelocityDegPerSec(),
-                    defaultGlobalConstraints.getMaxVelocityDegPerSec()
+                    defaultGlobalConstraints.getMaxVelocityDegPerSec(), reportWarnings
                 );
                 double rotationAcceleration = resolveMaxConstraintValue(
                     pathConstraints.getMaxAccelerationDegPerSec2(),
@@ -1397,11 +1411,15 @@ public class Path {
      * @return List of (PathElement, PathElementConstraint) pairs with waypoints expanded
      */
     List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints() {
-        if (!isValid()) {
+        return getPathElementsWithConstraintsNoWaypoints(true);
+    }
+
+    List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints(boolean reportWarnings) {
+        if (elementValidationError().isPresent()) {
             return new ArrayList<>();
         }
         
-        List<Pair<PathElement, PathElementConstraint>> elementsWithConstraints = getPathElementsWithConstraints();
+        List<Pair<PathElement, PathElementConstraint>> elementsWithConstraints = getPathElementsWithConstraints(reportWarnings);
         List<Pair<PathElement, PathElementConstraint>> out = new ArrayList<>();
         for (int i = 0; i < elementsWithConstraints.size(); i++) {
             PathElement element = elementsWithConstraints.get(i).getFirst();
@@ -1524,57 +1542,66 @@ public class Path {
     }
 
     /**
-     * Gets the starting pose for this path using a default rotation of 0.
-     * 
-     * @return The starting pose
-     * @throws IllegalStateException if the path is invalid or empty
-     * @see #getInitialModuleDirection()
+     * Returns the authored starting pose, using zero heading for a translation-only start.
+     * A single destination or a path beginning with a rotation/event has no authored start.
+     *
+     * <pre>{@code
+     * path.getAuthoredStartPose().ifPresent(drive::resetPose);
+     * }</pre>
+     *
+     * @return the authored start, or empty when execution must start from the measured pose
+     * @throws IllegalStateException if the path's elements are invalid
+     * @see #getAuthoredStartPose(Rotation2d)
+     */
+    public Optional<Pose2d> getAuthoredStartPose() {
+        return getAuthoredStartPose(new Rotation2d());
+    }
+
+    /**
+     * Returns the authored starting pose in this path's current flip/mirror state.
+     * Only a starting waypoint supplies an authored heading. A translation-only start uses
+     * {@code fallbackRotation}; a later rotation target is a destination, not a reset heading.
+     * Motion constraints are not checked by this geometry query.
+     *
+     * @param fallbackRotation heading to use for an authored translation-only start
+     * @return the authored start, or empty for a current-pose start
+     * @throws IllegalStateException if the path's elements are invalid
+     */
+    public Optional<Pose2d> getAuthoredStartPose(Rotation2d fallbackRotation) {
+        java.util.Objects.requireNonNull(fallbackRotation, "fallbackRotation");
+        elementValidationError().ifPresent(message -> {
+            throw new IllegalStateException("Cannot compute authored start: " + message);
+        });
+        if (!hasAuthoredStart()) return Optional.empty();
+        PathElement first = pathElements.getFirst();
+        if (first instanceof Waypoint waypoint) {
+            return Optional.of(new Pose2d(waypoint.translationTarget().translation(), waypoint.rotationTarget().rotation()));
+        }
+        return Optional.of(new Pose2d(((TranslationTarget) first).translation(), fallbackRotation));
+    }
+
+    /**
+     * Returns the authored starting pose, using zero heading for a translation-only start.
+     * Use {@link #getAuthoredStartPose()} when a path may instead start from the measured pose.
+     *
+     * @return the authored starting pose
+     * @throws IllegalStateException if the elements are invalid or there is no authored start
      */
     public Pose2d getStartPose() {
         return getStartPose(new Rotation2d());
     }
 
     /**
-     * Gets the starting pose for this path.
-     * 
-     * <p>The translation comes from the first translation target. The rotation comes
-     * from the first rotation target, or falls back to the provided rotation if none exists.
-     * 
-     * @param fallbackRotation The rotation to use if no rotation target is found
-     * @return The starting pose
-     * @throws IllegalStateException if the path is invalid or has no translation targets
-     * @see #getInitialModuleDirection(Rotation2d)
+     * Returns the authored starting pose with a fallback heading for a translation-only start.
+     * This method never returns a single destination as the starting pose.
+     *
+     * @param fallbackRotation heading to use for an authored translation-only start
+     * @return the authored starting pose
+     * @throws IllegalStateException if the elements are invalid or there is no authored start
      */
     public Pose2d getStartPose(Rotation2d fallbackRotation) {
-        if (!isValid()) {
-            throw new IllegalStateException("Path invalid - cannot compute start pose");
-        }
-
-        List<Pair<PathElement, PathElementConstraint>> elements = getPathElementsWithConstraintsNoWaypoints();
-        if (elements.isEmpty()) {
-            throw new IllegalStateException("Path must contain at least one element");
-        }
-
-        Translation2d resetTranslation = null;
-        for (Pair<PathElement, PathElementConstraint> element : elements) {
-            if (element.getFirst() instanceof TranslationTarget) {
-                resetTranslation = ((TranslationTarget) element.getFirst()).translation();
-                break;
-            }
-        }
-        if (resetTranslation == null) {
-            throw new IllegalStateException("Path must contain at least one translation target");
-        }
-
-        Rotation2d resetRotation = fallbackRotation;
-        for (int i = 0; i < elements.size(); i++) {
-            if (elements.get(i).getFirst() instanceof RotationTarget) {
-                resetRotation = ((RotationTarget) elements.get(i).getFirst()).rotation();
-                break;
-            }
-        }
-
-        return new Pose2d(resetTranslation, resetRotation);
+        return getAuthoredStartPose(fallbackRotation).orElseThrow(() ->
+            new IllegalStateException("Path has no authored start; use getAuthoredStartPose() or the robot's measured pose"));
     }
 
     /**
@@ -1588,6 +1615,7 @@ public class Path {
      * <p>This optimization is primarily important for the autonomous phase where precise initial
      * movement matters most. 
      * 
+     * @throws IllegalStateException if the path has no authored start; use the pose-supplier overload
      * @return The initial module direction as a Rotation2d
      * @see #getStartPose()
      */
@@ -1602,6 +1630,7 @@ public class Path {
      * this direction before the start of an autonomous routine. See {@link #getInitialModuleDirection()}
      * for details.
      * 
+     * @throws IllegalStateException if the path has no authored start; use the pose-supplier overload
      * @param fallbackRotation The fallback rotation for computing start pose
      * @return The initial module direction
      * @see #getInitialModuleDirection()
@@ -1632,7 +1661,7 @@ public class Path {
     public Rotation2d getInitialModuleDirection(Supplier<Pose2d> poseSupplier) {
         Pose2d robotPose = poseSupplier.get();
         
-        if (!isValid()) {
+        if (elementValidationError().isPresent()) {
             return new Rotation2d(0);
         }
 

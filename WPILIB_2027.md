@@ -60,7 +60,7 @@ A v3 sequence can await each path without retaining its drive requirement:
 var auto = Command.noRequirements(co -> {
     co.await(paths.build(pathA).withPoseReset());
     co.await(paths.build(pathB));
-});
+}).named("Collect and score");
 Scheduler.getDefault().schedule(auto);
 ```
 
@@ -91,6 +91,13 @@ authored start, `withPoseReset()` warns once and skips reset. The editor's grey
 preview-start robot supplies an equivalent movable start for its ideal preview;
 it is private editor metadata and is not an authored robot-path element.
 
+For a manual reset, use `path.getAuthoredStartPose().ifPresent(drive::resetPose)`.
+It returns empty for a current-pose start; `getStartPose()` throws in that case.
+The overload taking a `Rotation2d` supplies the heading for a translation-only
+authored start. A starting waypoint supplies its own heading. For module
+preorientation without an authored start, pass `drive::getPose` to
+`getInitialModuleDirection(...)`.
+
 Load JSON with `new Path("score")`, `new Path(projectDirectory, "score")`, or
 `Path.fromJson(json, defaults)`. Structural file errors name the file and
 relevant element/field. Executable validity is checked again when following,
@@ -98,6 +105,11 @@ so programmatic edits are included. The former `JsonUtils` and resolved constrai
 are internal; use `Path` APIs for loading/editing. Missing optional constraints retain
 their defaults; present malformed values report the constraint and field. Rejected
 loads leave shared project defaults unchanged.
+
+`path.isValid()` checks the current elements and resolved constraints using the
+execution validation, without logging or changing the path. Construction and
+editing remain permissive. `reorderElements(...)` requires each existing index
+exactly once and rejects invalid orders without changing the path.
 
 ## Handoffs and endpoints
 

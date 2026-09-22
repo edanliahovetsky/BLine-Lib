@@ -42,7 +42,21 @@ public record PreparedPath(
     }
 
     public static PreparedPath create(Path source, Optional<Boolean> flipped, Optional<Boolean> mirrored) {
-        source.validationError().ifPresent(message -> { throw new IllegalArgumentException(message); });
+        return create(source, flipped, mirrored, true);
+    }
+
+    static Optional<String> validationError(Path source) {
+        try {
+            create(source, Optional.empty(), Optional.empty(), false);
+            return Optional.empty();
+        } catch (IllegalArgumentException e) {
+            return Optional.of(e.getMessage());
+        }
+    }
+
+    private static PreparedPath create(Path source, Optional<Boolean> flipped, Optional<Boolean> mirrored,
+                                       boolean reportWarnings) {
+        source.elementValidationError().ifPresent(message -> { throw new IllegalArgumentException(message); });
         Path path = source.copy();
         flipped.ifPresent(path::setFlipped);
         mirrored.ifPresent(path::setMirrored);
@@ -57,7 +71,7 @@ public record PreparedPath(
         positive(translationTolerance, "End translation tolerance");
         positive(rotationTolerance, "End rotation tolerance");
         HandoffMode mode = path.getHandoffMode().orElse(Path.getDefaultHandoffMode());
-        List<Pair<Path.PathElement, Path.PathElementConstraint>> elements = path.getPathElementsWithConstraintsNoWaypoints().stream().map(entry -> {
+        List<Pair<Path.PathElement, Path.PathElementConstraint>> elements = path.getPathElementsWithConstraintsNoWaypoints(reportWarnings).stream().map(entry -> {
             if (entry.getFirst() instanceof Path.TranslationTarget target) {
                 Path.PathElement resolved = new Path.TranslationTarget(target.translation(),
                     Optional.of(target.intermediateHandoffRadiusMeters().orElse(defaults.getIntermediateHandoffRadiusMeters())),

@@ -98,6 +98,8 @@ class PathConstraintsTest {
                 GLOBALS
             );
 
+            assertTrue(path.isValid());
+            assertTrue(!sawWarning.get(), "Explicit validity checks must be silent");
             Path.TranslationTargetConstraint resolved =
                 (Path.TranslationTargetConstraint) path.getPathElementsWithConstraints().get(0).getSecond();
 
