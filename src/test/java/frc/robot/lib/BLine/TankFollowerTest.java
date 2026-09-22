@@ -34,6 +34,7 @@ class TankFollowerTest {
             assertTrue(follower.isFinished(), "Stopped endpoint must finish in 40 simulated seconds");
             assertTrue(rig.pose.getTranslation().getDistance(new Translation2d(3, 0)) <= 0.08);
             assertEquals(90, rig.pose.getRotation().getDegrees(), 2);
+            follower.end(false);
             assertEquals(0, rig.output.vx, 1e-8);
             assertEquals(0, rig.output.omega, 1e-8);
         }
@@ -125,6 +126,50 @@ class TankFollowerTest {
             assertEquals(0, rig.output.vx, 0);
             assertEquals(0, rig.output.omega, 0);
         }
+    }
+
+    @Test void arrivalUsesPoseToleranceWithoutWaitingForMeasuredSpeedOrResettingPidState() {
+        for (DriveType type : DriveType.values()) {
+            Rig rig = new Rig(new Pose2d());
+            CountingPID translation = new CountingPID();
+            CountingPID rotation = new CountingPID();
+            CountingPID crossTrack = new CountingPID();
+            Follower.setTimestampSupplier(() -> rig.seconds);
+            Follower follower = new Follower(new Path(new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(90)))),
+                new FollowerConfig(type, () -> rig.pose, value -> rig.pose = value,
+                    () -> new ChassisVelocities(.4, 0, .3), value -> rig.output = value,
+                    translation, rotation, crossTrack), null, new PendingEvents());
+            follower.initialize();
+            rig.seconds += .02;
+            follower.execute();
+            rig.pose = new Pose2d(2, 0, Rotation2d.ZERO);
+            rig.seconds += .02;
+            follower.execute();
+            assertEquals(0, rig.output.vx, "Arrival must stop translation even with a nonzero measured velocity");
+            assertTrue(rig.output.omega > 0, "Final heading control begins immediately");
+            assertFalse(follower.isFinished(), "The final heading still matters for a stopping path");
+            assertEquals(1, translation.resets);
+            assertEquals(1, rotation.resets);
+            assertEquals(1, crossTrack.resets);
+            rig.pose = new Pose2d(2, 0, Rotation2d.fromDegrees(90));
+            rig.seconds += .02;
+            follower.execute();
+            assertTrue(follower.isFinished(), "Pose tolerances complete every drivetrain despite sensor velocity");
+            assertEquals(0, rig.output.vx);
+            assertEquals(0, rig.output.omega);
+            follower.end(false);
+            follower.initialize();
+            assertEquals(2, translation.resets, "Reusing the command must reset all controllers");
+            assertEquals(2, rotation.resets);
+            assertEquals(2, crossTrack.resets);
+            follower.end(true);
+        }
+    }
+
+    private static final class CountingPID extends PIDController {
+        int resets;
+        CountingPID() { super(2, .1, .01); }
+        @Override public void reset() { super.reset(); resets++; }
     }
 
     private static Path.PathConstraints constraints() {

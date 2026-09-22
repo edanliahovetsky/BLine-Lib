@@ -582,6 +582,30 @@ class FollowPathTest {
     }
 
     @Test
+    void completedRotationReleasesItsRangedLimitsWhileHoldingTheHeading() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
+        java.util.Map<String, Double> logs = new java.util.HashMap<>();
+        FollowPathV2.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.PathConstraints()
+            .setMinVelocityDegPerSec(new Path.RangedConstraint(60, 0, 0))
+            .setMaxVelocityDegPerSec(new Path.RangedConstraint(70, 0, 0)),
+            new Path.TranslationTarget(0, 0), new Path.RotationTarget(Rotation2d.fromDegrees(5), .5, false),
+            new Path.TranslationTarget(1, 0), new Path.TranslationTarget(3, 0));
+        FollowPathV2 command = createCommand(path, robot);
+        command.initialize();
+        runExecute(command, robot);
+        assertEquals(60, logs.get("FollowPath/minRotationVelocityDegPerSec"));
+        robot.setPose(new Pose2d(1, 0, Rotation2d.ZERO));
+        runExecute(command, robot);
+        assertEquals(-1, command.getCurrentRotationElementIndex());
+        assertEquals(0, logs.get("FollowPath/minRotationVelocityDegPerSec"));
+        assertEquals(TEST_GLOBAL_CONSTRAINTS.getMaxVelocityDegPerSec(), logs.get("FollowPath/maxRotationVelocityDegPerSec"));
+        assertEquals(logs.get("FollowPath/rawRotationControllerOutput"), logs.get("FollowPath/rotationControllerOutput"));
+        assertEquals(5, logs.get("FollowPath/targetRotationDeg"), 1e-8);
+    }
+
+    @Test
     void rotationIndexTransitionsToNoActiveTargetAfterLastRotation() {
         MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, Rotation2d.fromDegrees(0.0)));
         FollowPathV2.setTimestampSupplier(robot::getTimestampSeconds);
@@ -607,9 +631,9 @@ class FollowPathTest {
         robot.setPose(new Pose2d(2.0, 0.0, Rotation2d.fromDegrees(90.0)));
         runExecute(command, robot);
 
-        assertFalse(command.isFinished(), "Arrival alone must not end a stopping path while the command is still decelerating");
-        for (int cycle = 0; cycle < 100 && !command.isFinished(); cycle++) runExecute(command, robot);
-        assertTrue(command.isFinished(), "Should finish after braking at the final position and heading");
+        assertTrue(command.isFinished(), "Final position and heading complete the path without waiting for velocity");
+        assertEquals(0, robot.getRobotRelativeSpeeds().vx);
+        assertEquals(0, robot.getRobotRelativeSpeeds().omega);
     }
 
     @Test

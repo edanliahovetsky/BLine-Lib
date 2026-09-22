@@ -250,7 +250,6 @@ final class Follower {
     private boolean rollingEnd;
     private boolean rollingHandoff;
     private boolean executed;
-    private boolean reportedTankRecovery;
     private Rotation2d currentRotationTargetRad = new Rotation2d();
     private double currentRotationTargetInitRad = 0;
     private List<Pair<PathElement, PathElementConstraint>> pathElementsWithConstraints = new ArrayList<>();
@@ -323,7 +322,6 @@ final class Follower {
         initialized = false;
         executed = false;
         rollingHandoff = false;
-        reportedTankRecovery = false;
         active = true;
         eventExecution = new PendingEvents.Execution();
         pathElementsWithConstraints = new ArrayList<>();
@@ -541,7 +539,7 @@ final class Follower {
         double targetRotationRad = finalPositionReached
             ? rotationProgress.finalHeadingRadians() : rotationSample.headingRadians();
         int constraintIndex = finalPositionReached ? rotationProgress.finalElementIndex()
-            : rotationSample.activeIndex() >= 0 ? rotationSample.activeIndex() : rotationSample.previousIndex();
+            : rotationSample.activeIndex() >= 0 ? rotationSample.activeIndex() : -1;
         RotationTargetConstraint rotationConstraint = constraintIndex >= 0
             ? (RotationTargetConstraint) pathElementsWithConstraints.get(constraintIndex).getSecond()
             : new RotationTargetConstraint(executionDefaults.getMaxVelocityDegPerSec(), executionDefaults.getMaxAccelerationDegPerSec2());
@@ -556,13 +554,8 @@ final class Follower {
             double norm = Math.hypot(vx, vy);
             double scale = norm > translationConstraint.maxVelocityMetersPerSec()
                 ? translationConstraint.maxVelocityMetersPerSec() / norm : 1;
-            tankTarget = tankController.target(vx * scale, vy * scale, currentPose, measured,
-                finalPositionReached, rollingEnd, tankFinalHeading, Math.toRadians(endRotationTolerance), direction);
-            if (tankTarget.phaseChanged()) {
-                translationController.reset();
-                crossTrackController.reset();
-                rotationController.reset();
-            }
+            tankTarget = tankController.target(vx * scale, vy * scale, currentPose,
+                finalPositionReached, tankFinalHeading, Math.toRadians(endRotationTolerance), direction);
             targetRotationRad = tankTarget.heading();
             currentRotationTargetRad = new Rotation2d(targetRotationRad);
         }
@@ -617,12 +610,9 @@ final class Follower {
                 translationConstraint.maxAccelerationMetersPerSec2(),
                 Math.toRadians(rotationConstraint.maxAccelerationDegPerSec2()),
                 translationConstraint.maxVelocityMetersPerSec(), maxOmegaRadPerSec), dt, direction);
-            if (limited.recovering() && !reportedTankRecovery) {
-                logger.warning("FollowPath: Tank motion exceeds a newly applied limit; recovering without a velocity jump");
-                reportedTankRecovery = true;
-            }
             double outputOmega = rotationOverrideBypassesConstraints ? rotationOverrideOmegaRadPerSec : limited.velocity().omega();
-            if (rotationOverrideBypassesConstraints) tankController.overrideOmega(outputOmega);
+            if (finalPositionReached && !rotationOverrideActive && !tankTarget.steer()) outputOmega = 0;
+            tankController.overrideOmega(outputOmega);
             ChassisVelocities robotRelative = new ChassisVelocities(limited.velocity().forward(), 0, outputOmega);
             robotRelativeSpeedsConsumer.accept(robotRelative);
             targetSpeeds = robotRelative.toFieldRelative(currentPose.getRotation());
@@ -631,6 +621,11 @@ final class Follower {
                 translationConstraint.maxAccelerationMetersPerSec2(),
                 Math.toRadians(rotationConstraint.maxAccelerationDegPerSec2()),
                 translationConstraint.maxVelocityMetersPerSec(), maxOmegaRadPerSec);
+            if (finalPositionReached) {
+                targetSpeeds.vx = 0;
+                targetSpeeds.vy = 0;
+                if (!rotationOverrideActive && Math.abs(rotationErrorRad) <= Math.toRadians(endRotationTolerance)) targetSpeeds.omega = 0;
+            }
             if (rotationOverrideBypassesConstraints) targetSpeeds.omega = rotationOverrideOmegaRadPerSec;
             robotRelativeSpeedsConsumer.accept(targetSpeeds.toRobotRelative(currentPose.getRotation()));
         }
@@ -1077,14 +1072,12 @@ final class Follower {
         if (!executed) return false;
         boolean lastTranslation = findNextTranslationTargetIndex(translationElementIndex + 1) < 0;
         boolean atPosition = lastTranslation && calculateRemainingPathDistance() <= endTranslationTolerance;
-        boolean atRotation = Math.abs(currentRotationTargetRad.minus(poseSupplier.get().getRotation()).getRadians())
+        double measuredHeading = poseSupplier.get().getRotation().getRadians();
+        double finalHeading = driveType == DriveType.TANK
+            ? tankFinalHeading.orElse(measuredHeading) : rotationProgress.finalHeadingRadians();
+        boolean atRotation = Math.abs(MathUtil.angleModulus(finalHeading - measuredHeading))
             <= Math.toRadians(endRotationTolerance);
-        ChassisVelocities measured = robotRelativeSpeedsSupplier.get();
-        boolean stopped = Math.hypot(lastSpeeds.vx, lastSpeeds.vy) < 1e-8 && Math.abs(lastSpeeds.omega) < 1e-8
-            && Math.hypot(measured.vx, measured.vy) <= TankController.STOPPED_VELOCITY
-            && Math.abs(measured.omega) <= TankController.STOPPED_VELOCITY;
-        boolean finished = rollingEnd ? rollingHandoff : atPosition
-            && (driveType == DriveType.TANK ? tankController.finished() : atRotation && stopped);
+        boolean finished = rollingEnd ? rollingHandoff : atPosition && atRotation;
         logBoolean("FollowPath/finished", finished);
         logBoolean("FollowPath/finishedIsLastRotationElement", rotationSampleAtEnd());
         logBoolean("FollowPath/finishedIsLastTranslationElement", lastTranslation);
