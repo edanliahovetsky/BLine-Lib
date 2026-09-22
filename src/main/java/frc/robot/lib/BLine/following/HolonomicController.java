@@ -16,7 +16,7 @@ final class HolonomicController {
     ChassisVelocities limit(double vx, double vy, double omega, double dt,
             TranslationLimits translation, RotationLimits rotation,
             boolean atPosition, boolean atHeading, boolean overrideActive, boolean bypassRotation) {
-        command = ChassisRateLimiter.limit(new ChassisVelocities(vx, vy, omega), command, dt,
+        command = HolonomicRateLimiter.limit(new ChassisVelocities(vx, vy, omega), command, dt,
             translation.maxAccelerationMetersPerSec2(), Math.toRadians(rotation.maxAccelerationDegPerSec2()),
             translation.maxVelocityMetersPerSec(), Math.toRadians(rotation.maxVelocityDegPerSec()));
         if (atPosition) {

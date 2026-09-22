@@ -3,7 +3,7 @@ package frc.robot.lib.BLine.following;
 import org.wpilib.math.kinematics.ChassisVelocities;
 
 /**
- * A utility class that limits the rate of change of chassis speeds for smooth motion control.
+ * Limits translation and angular velocity for swerve and mecanum drivetrains.
  * 
  * <p>This class provides acceleration limiting for both translational and rotational velocities
  * in field-relative coordinates. The robot's wheel/motor control remains responsible for
@@ -17,7 +17,7 @@ import org.wpilib.math.kinematics.ChassisVelocities;
  * 
  * <p>Example usage:
  * <pre>{@code
- * ChassisVelocities limited = ChassisRateLimiter.limit(
+ * ChassisVelocities limited = HolonomicRateLimiter.limit(
  *     desiredSpeeds,
  *     lastSpeeds,
  *     0.02,  // 20ms loop time
@@ -30,7 +30,7 @@ import org.wpilib.math.kinematics.ChassisVelocities;
  * 
  * @see org.wpilib.math.kinematics.ChassisVelocities
  */
-public class ChassisRateLimiter {
+public class HolonomicRateLimiter {
     
     /**
      * Limits the chassis speeds to respect both velocity and acceleration constraints.

@@ -228,12 +228,16 @@ The beta groups public types by responsibility:
 | --- | --- |
 | `path` | `Path` and its nested elements/constraints, `HandoffMode`, `DriveDirection` |
 | `commands` | `FollowPath`, `FollowPathV2`, `BLineCommandsV2` |
-| `following` | `DriveType`, `ChassisRateLimiter` |
+| `following` | `DriveType`, `HolonomicRateLimiter` |
 | `field` | `BLineField`, `FlippingUtil` |
 
 Update older flat-package imports to these packages. Builder arguments and fluent
 execution options retain the same signatures. Both command adapters still share
 one control implementation; swerve and mecanum share holonomic control.
+
+The former `ChassisRateLimiter` utility is now
+`frc.robot.lib.BLine.following.HolonomicRateLimiter`. Its `limit(...)` arguments
+and limiting behavior are unchanged.
 
 `PreparedPath` and `FollowerSession` are internal bridges between packages, not
 supported configuration APIs for robot code. Their Java-public visibility is
