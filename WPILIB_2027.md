@@ -19,6 +19,10 @@ BLine's published dependencies do not install either framework for you.
 Both constructors require, in order:
 
 ```java
+import frc.robot.lib.BLine.commands.FollowPath;
+import frc.robot.lib.BLine.following.DriveType;
+import frc.robot.lib.BLine.path.Path;
+
 var paths = new FollowPath.Builder(
     DriveType.TANK, drive,
     drive::getPose, drive::resetPose,
@@ -90,8 +94,10 @@ it is private editor metadata and is not an authored robot-path element.
 Load JSON with `new Path("score")`, `new Path(projectDirectory, "score")`, or
 `Path.fromJson(json, defaults)`. Structural file errors name the file and
 relevant element/field. Executable validity is checked again when following,
-so programmatic edits are included. `JsonUtils`, resolved constraint records
-and follower collaborators are internal; use `Path` APIs for loading/editing.
+so programmatic edits are included. The former `JsonUtils` and resolved constraint records
+are internal; use `Path` APIs for loading/editing. Missing optional constraints retain
+their defaults; present malformed values report the constraint and field. Rejected
+loads leave shared project defaults unchanged.
 
 ## Handoffs and endpoints
 
@@ -123,15 +129,16 @@ translation handoffs. A join continues from the previously requested heading;
 PID and slew limits still control actual motion. There is no trajectory or
 trapezoidal motion-profile controller.
 
-With zero final minimum translation velocity, the robot stops inside translation
-and heading tolerances. With a positive final minimum, the path completes at
+With zero final minimum translation velocity, translation is commanded to zero
+at position tolerance, and the path completes when the applicable heading tolerance
+is also met. Completion does not wait for measured or commanded velocity to settle. With a positive final minimum, the path completes at
 the position tolerance with best-effort rotation and retains its achieved
 velocity output for the next command. It does not jump instantly to the
 minimum. Cancellation and faults stop output. Teams must deliberately handle
 what runs after a rolling exit.
 
-Tank ignores intermediate authored rotations. At a stopped endpoint it brakes,
-then aligns to the last waypoint's body heading. A rolling tank exit skips that
+Tank ignores intermediate authored rotations. At position tolerance it switches
+directly to the last waypoint's body heading, with zero forward speed. A rolling tank exit skips that
 stationary alignment. Swerve/mecanum can rotate while translating.
 
 Tank limiting selects forward speed and turn rate jointly by the approximately closest next
@@ -194,7 +201,8 @@ Scheduler.getDefault().cancelAll();
 FollowPath.clearPendingEventTriggers();
 ```
 
-V2 uses its scheduler and `FollowPathV2.clearPendingEventTriggers()`.
+V2 dispatches independently of the active button loop. It uses its scheduler and
+`FollowPathV2.clearPendingEventTriggers()`.
 Teams with other commands to preserve should cancel only their owned commands.
 
 ## Existing telemetry and field display
@@ -211,3 +219,25 @@ on `Field2d`. In WPILib 2027, use `org.wpilib.smartdashboard.Field2d` and the
 new telemetry API to publish the existing widget with `table.log("Field", field)`
 in your periodic logging. The robot review examples demonstrate framework
 setup and lifecycle wiring.
+
+## Imports and internal structure
+
+The beta groups public types by responsibility:
+
+| Package under `frc.robot.lib.BLine` | Public application API |
+| --- | --- |
+| `path` | `Path` and its nested elements/constraints, `HandoffMode`, `DriveDirection` |
+| `commands` | `FollowPath`, `FollowPathV2`, `BLineCommandsV2` |
+| `following` | `DriveType`, `ChassisRateLimiter` |
+| `field` | `BLineField`, `FlippingUtil` |
+
+Update older flat-package imports to these packages. Builder arguments and fluent
+execution options retain the same signatures. Both command adapters still share
+one control implementation; swerve and mecanum share holonomic control.
+
+`PreparedPath` and `FollowerSession` are internal bridges between packages, not
+supported configuration APIs for robot code. Their Java-public visibility is
+needed across package boundaries. The parser, controllers, traversal helpers,
+and event queue remain package-private. The former public `JsonUtils` and raw
+resolved-constraint inspection APIs have no supported direct replacements; use
+the authored `Path` API for loading and editing.

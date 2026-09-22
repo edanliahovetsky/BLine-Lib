@@ -1,12 +1,11 @@
 package frc.robot.lib.BLine;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
 import java.nio.file.Path;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class PublicationMetadataTest {
     @Test

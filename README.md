@@ -44,7 +44,9 @@ artifact supplied with the review projects.
 ## Quick Start
 
 ```java
-import frc.robot.lib.BLine.*;
+import frc.robot.lib.BLine.commands.FollowPath;
+import frc.robot.lib.BLine.following.DriveType;
+import frc.robot.lib.BLine.path.Path;
 import org.wpilib.math.controller.PIDController;
 
 // Commands v3: drive implements Mechanism. Use FollowPathV2.Builder and
@@ -86,7 +88,8 @@ FollowPath.overrideRotation(
 FollowPath.clearRotationOverride();
 ```
 
-The default override behavior bypasses BLine's rotational velocity and
+Rotation overrides are shared by both command adapters: setting or clearing through either
+affects both. The default override behavior bypasses BLine's rotational velocity and
 acceleration constraints so the caller owns the final path-follower omega
 command. If the supplied omega should still respect BLine's rotation limits,
 use the explicit constrained mode:
@@ -103,7 +106,7 @@ FollowPath.overrideRotation(
 Register event commands during robot setup using the matching adapter:
 `FollowPath.registerEventTrigger("intake", intakeCommand)` for v3, or
 `FollowPathV2.registerEventTrigger(...)` for v2. Commands are dispatched on
-the scheduler's next event-loop poll and can outlive the path.
+the next scheduler cycle and can outlive the path.
 
 Use ordinary coroutine composition for v3. `BLineCommandsV2` retains the
 proxy-based v2 composition helpers for autos whose events share mechanism
@@ -117,7 +120,7 @@ Elastic or Glass) needs no simulation. `BLineField` provides small helpers for
 drawing a BLine path directly as a connected field object:
 
 ```java
-import frc.robot.lib.BLine.BLineField;
+import frc.robot.lib.BLine.field.BLineField;
 import org.wpilib.smartdashboard.Field2d;
 
 Field2d field = new Field2d();
