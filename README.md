@@ -1,7 +1,7 @@
 <h1 align="center">BLine-Lib</h1>
 
 <p align="center">
-  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-2027.0.0--beta.1-2563eb" alt="Development candidate 2027.0.0-beta.1"></a>
+  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-2027.0.0--beta.1-2563eb" alt="BLine 2027.0.0-beta.1"></a>
   <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/WPILib-2027.0.0--alpha--7-c1121f" alt="WPILib 2027.0.0 Alpha 7"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-0f766e" alt="BSD 3-Clause License"></a>
 </p>
@@ -12,20 +12,20 @@ built around practical tuning, quick iteration, and rapid empirical testing in
 time-constrained build-season environments.
 
 > [!IMPORTANT]
-> This is the `wpilib-2027` development line for WPILib 2027.0.0-alpha-7,
-> with Commands v3 and v2, swerve, tank and mecanum support. The beta is pending
-> manual review and distribution. Read the [2027 guide](WPILIB_2027.md).
+> This is **BLine 2027.0.0-beta.1** for **WPILib 2027.0.0-alpha-7 and Java 25**,
+> with Commands v3 and v2, swerve, tank and mecanum support.
+> Read the [2027 guide](WPILIB_2027.md) for setup and migration.
 > The `main` branch remains the stable WPILib 2026 release line.
 
 **Quick links**
 
-🚀 **[Open the hosted editor](https://bline-web.pages.dev/)** — create, tune, preview, and export BLine paths in the browser.
+🚀 **[Open the 2027 beta editor](https://web-beta.bline-web.pages.dev/)** — create, tune, preview, and export BLine paths in the browser.
 
 🖥️ **[BLine Web](https://github.com/edanliahovetsky/BLine-Web)** — current web and desktop editor.
 
 💬 **[Chief Delphi Thread](https://www.chiefdelphi.com/t/introducing-bline-a-new-rapid-polyline-autonomous-path-planning-suite/509778)** — discussion, feedback, and announcements.
 
-📚 **[Documentation](https://bline-docs.pages.dev/)** — stable WPILib 2026 guides, tutorials, and reference.
+📚 **[2027 library guide](WPILIB_2027.md)** — beta setup, API migration, and robot behavior. The [documentation site](https://bline-docs.pages.dev/) is updated separately.
 
 <p align="center">
   <img src="docs/readme/bline-web-demo.gif" alt="BLine Web editor GUI demo" width="900">
@@ -35,11 +35,21 @@ time-constrained build-season environments.
 
 ## Installation
 
-The 2027 candidate uses `BLine-Lib-2027.json`. It requires Java 25 and the
-WPILib command framework selected by your robot project. This development
-candidate is not yet published; do not replace a working 2026 installation
-with an unpublished beta vendordep. Local review builds use the packaged
-artifact supplied with the review projects.
+Use a **WPILib 2027.0.0-alpha-7 Java project with Java 25** and its chosen
+Commands v2 or v3 framework. In WPILib VS Code, open **WPILib: Manage Vendor
+Libraries**, choose **Install new libraries (online)**, and paste:
+
+```text
+https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json
+```
+
+Build the robot project to download `v2027.0.0-beta.1` from JitPack. Keep only
+one BLine vendordep in the project: replace an existing `BLine-Lib.json` when
+migrating to 2027. BLine includes both adapters, but your project must supply
+the matching WPILib command framework. See the [2027 guide](WPILIB_2027.md)
+before updating older BLine code.
+
+WPILib 2026 projects should continue using the [stable installation](https://github.com/edanliahovetsky/BLine-Lib/tree/main#installation).
 
 ## Quick Start
 

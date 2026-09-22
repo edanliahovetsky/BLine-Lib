@@ -1,9 +1,36 @@
 # BLine-Lib 2027 beta
 
-This development candidate targets **WPILib 2027.0.0-alpha-7 and Java 25**.
-It is pending manual review and distribution. The stable WPILib 2026 release
+BLine **2027.0.0-beta.1** targets **WPILib 2027.0.0-alpha-7 and Java 25**.
+The stable WPILib 2026 release
 remains on [`main`](https://github.com/edanliahovetsky/BLine-Lib).
 Later WPILib alphas require validation before being called supported.
+
+## Installation
+
+In a WPILib 2027.0.0-alpha-7 Java project, use **WPILib: Manage Vendor
+Libraries → Install new libraries (online)** with:
+
+```text
+https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json
+```
+
+The command-line equivalent from the robot project is:
+
+```bash
+./gradlew vendordep --url=https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json
+./gradlew build
+```
+
+Use `gradlew.bat` on Windows. Remove an older `BLine-Lib.json` first so the
+project has only one BLine vendordep. The beta resolves
+`com.github.edanliahovetsky:BLine-Lib:v2027.0.0-beta.1` from JitPack and includes
+binary, sources, and Javadoc jars. Select the command framework in your robot
+project; BLine does not install Commands v2 or v3 for you.
+
+Use the [2027 beta editor](https://web-beta.bline-web.pages.dev/) with this
+library. The package migration is listed under [Imports and internal structure](#imports-and-internal-structure).
+This guide and the packaged Javadoc describe the beta; the hosted Javadoc
+remains the stable WPILib 2026 reference.
 
 ## Robot setup
 
