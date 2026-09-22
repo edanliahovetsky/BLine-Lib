@@ -86,7 +86,10 @@ final class JsonUtils {
             }
 
             JSONObject json = object(new JSONParser().parse(fileContent), "path");
-            return buildPathFromJson(json, loadGlobalConstraints(autosDir));
+            ProjectConfig config = readProjectConfig(autosDir);
+            Path path = buildPathFromJson(json, config.defaults());
+            Path.setDefaultHandoffMode(config.handoffMode());
+            return path;
         } catch (IOException | ParseException | RuntimeException e) {
             throw new IllegalArgumentException(pathFileName + ": " + e.getMessage(), e);
         }
@@ -148,23 +151,30 @@ final class JsonUtils {
 
         Path.PathConstraints constraints = parsePathConstraints(json);
 
+        Optional<HandoffMode> handoffMode = readHandoffMode(json.get("handoff_mode"), "handoff_mode");
+        DriveDirection direction = DriveDirection.FORWARD;
+        if (json.containsKey("tank_drive_direction")) {
+            Object raw = json.get("tank_drive_direction");
+            if ("backward".equals(raw)) direction = DriveDirection.BACKWARD;
+            else if (!"forward".equals(raw))
+                throw new IllegalArgumentException("tank_drive_direction: expected \"forward\" or \"backward\", received " + raw);
+        }
         Path.DefaultGlobalConstraints globals = defaultGlobalConstraints;
-
-        JSONObject globalsJson = (JSONObject) json.get("default_global_constraints");
+        ProjectConfig config = null;
+        JSONObject globalsJson = json.get("default_global_constraints") == null ? null
+            : object(json.get("default_global_constraints"), "default_global_constraints");
         if (globalsJson != null) {
             globals = parseDefaultGlobalConstraints(globalsJson);
         } else if (globals == null) {
-            globals = loadGlobalConstraints(projectRoot());
+            config = readProjectConfig(projectRoot());
+            globals = config.defaults();
         }
 
+        // Only publish shared defaults after all present fields have been parsed successfully.
         Path path = new Path(elements, constraints, globals);
-        readHandoffMode(json.get("handoff_mode"), "handoff_mode").ifPresent(path::setHandoffMode);
-        if (json.containsKey("tank_drive_direction")) {
-            Object direction = json.get("tank_drive_direction");
-            if ("forward".equals(direction)) path.setTankDriveDirection(DriveDirection.FORWARD);
-            else if ("backward".equals(direction)) path.setTankDriveDirection(DriveDirection.BACKWARD);
-            else throw new IllegalArgumentException("tank_drive_direction: expected \"forward\" or \"backward\", received " + direction);
-        }
+        handoffMode.ifPresent(path::setHandoffMode);
+        path.setTankDriveDirection(direction);
+        if (config != null) Path.setDefaultHandoffMode(config.handoffMode());
         return path;
     }
 
@@ -308,10 +318,10 @@ final class JsonUtils {
         });
 
         lookupValueByKeys(constraintsJson, json, "end_translation_tolerance_meters")
-            .flatMap(JsonUtils::toDouble)
+            .map(value -> finiteConstraint(value, "end_translation_tolerance_meters"))
             .ifPresent(constraints::setEndTranslationToleranceMeters);
         lookupValueByKeys(constraintsJson, json, "end_rotation_tolerance_deg")
-            .flatMap(JsonUtils::toDouble)
+            .map(value -> finiteConstraint(value, "end_rotation_tolerance_deg"))
             .ifPresent(constraints::setEndRotationToleranceDeg);
 
         return constraints;
@@ -404,21 +414,23 @@ final class JsonUtils {
         Consumer<Optional<ArrayList<Path.RangedConstraint>>> setter
     ) {
         Optional<Object> arrObj = lookupValueByKeys(constraintsJson, rootJson, key);
-        if (arrObj.isEmpty() || !(arrObj.get() instanceof JSONArray arr) || arr.isEmpty()) {
-            return;
-        }
+        if (arrObj.isEmpty()) return;
+        if (!(arrObj.get() instanceof JSONArray arr))
+            throw new IllegalArgumentException("constraints." + key + " must be an array");
 
         ArrayList<Path.RangedConstraint> list = new ArrayList<>();
-        for (Object obj : arr) {
-            if (!(obj instanceof JSONObject rcJson)) {
-                continue;
-            }
+        for (int index = 0; index < arr.size(); index++) {
+            String context = "constraints." + key + "[" + index + "]";
+            JSONObject rcJson = object(arr.get(index), context);
             Optional<Double> value = toDouble(rcJson.get("value"));
             Optional<Integer> startOrdinal = toInt(rcJson.get("start_ordinal"));
             Optional<Integer> endOrdinal = toInt(rcJson.get("end_ordinal"));
-            if (value.isEmpty() || startOrdinal.isEmpty() || endOrdinal.isEmpty()) {
-                continue;
-            }
+            if (value.isEmpty() || !Double.isFinite(value.get()))
+                throw new IllegalArgumentException(context + ".value must be a finite number");
+            if (startOrdinal.isEmpty())
+                throw new IllegalArgumentException(context + ".start_ordinal must be an integer");
+            if (endOrdinal.isEmpty())
+                throw new IllegalArgumentException(context + ".end_ordinal must be an integer");
             list.add(new Path.RangedConstraint(value.get(), startOrdinal.get(), endOrdinal.get()));
         }
         if (!list.isEmpty()) {
@@ -445,6 +457,14 @@ final class JsonUtils {
      * @throws RuntimeException if the config file cannot be read or parsed
      */
     static Path.DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
+        ProjectConfig config = readProjectConfig(autosDir);
+        Path.setDefaultHandoffMode(config.handoffMode());
+        return config.defaults();
+    }
+
+    private record ProjectConfig(Path.DefaultGlobalConstraints defaults, HandoffMode handoffMode) {}
+
+    private static ProjectConfig readProjectConfig(File autosDir) {
         try {
             File config = new File(autosDir, "config.json");
 
@@ -461,10 +481,10 @@ final class JsonUtils {
 
             JSONObject json = object(new JSONParser().parse(fileContent), "config");
             Path.DefaultGlobalConstraints defaults = parseDefaultGlobalConstraints(json);
-            Path.setDefaultHandoffMode(readHandoffMode(lookupValueByKeys(
+            HandoffMode mode = readHandoffMode(lookupValueByKeys(
                 getNestedObject(json, "kinematic_constraints"), json, "default_handoff_mode")
-                .orElse(null), "default_handoff_mode").orElse(HandoffMode.RADIUS));
-            return defaults;
+                .orElse(null), "default_handoff_mode").orElse(HandoffMode.RADIUS);
+            return new ProjectConfig(defaults, mode);
         } catch (IOException | ParseException | RuntimeException e) {
             throw new IllegalArgumentException("config.json: " + e.getMessage(), e);
         }
@@ -592,7 +612,10 @@ final class JsonUtils {
 
     private static Optional<Integer> toInt(Object value) {
         if (value instanceof Number number) {
-            return Optional.of(number.intValue());
+            double ordinal = number.doubleValue();
+            if (!Double.isFinite(ordinal) || ordinal != Math.rint(ordinal)
+                || ordinal < Integer.MIN_VALUE || ordinal > Integer.MAX_VALUE) return Optional.empty();
+            return Optional.of((int) ordinal);
         }
         if (value instanceof String text) {
             try {
@@ -602,6 +625,13 @@ final class JsonUtils {
             }
         }
         return Optional.empty();
+    }
+
+    private static double finiteConstraint(Object value, String field) {
+        var parsed = toDouble(value);
+        if (parsed.isEmpty() || !Double.isFinite(parsed.get()))
+            throw new IllegalArgumentException("constraints." + field + " must be a finite number");
+        return parsed.get();
     }
 
     private static double readDoubleConstraintValue(
@@ -623,11 +653,8 @@ final class JsonUtils {
             return fallbackValue;
         }
         Optional<Double> parsed = toDouble(raw.get());
-        if (parsed.isEmpty()) {
-            System.err.println(
-                "BLine JsonUtils: Constraint key '" + primaryKey + "' must be numeric, using fallback value " + fallbackValue
-            );
-            return fallbackValue;
+        if (parsed.isEmpty() || !Double.isFinite(parsed.get())) {
+            throw new IllegalArgumentException(primaryKey + " must be a finite number");
         }
         return parsed.get();
     }

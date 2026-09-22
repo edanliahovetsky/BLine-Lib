@@ -34,7 +34,11 @@ public final class FollowPathV2 extends Command {
 
     private static PendingEvents createEvents() {
         PendingEvents events = new PendingEvents();
-        CommandScheduler.getInstance().getDefaultButtonLoop().bind(events::dispatch);
+        // Button loops can be replaced by robot code. Event dispatch belongs to
+        // the scheduler itself, and must continue regardless of active controls.
+        CommandScheduler.getInstance().registerSubsystem(new Subsystem() {
+            @Override public void periodic() { events.dispatch(); }
+        });
         return events;
     }
     /**
@@ -56,7 +60,7 @@ public final class FollowPathV2 extends Command {
 
     /**
      * Registers a short non-blocking action. Reached events run on the default scheduler's next
-     * event-loop poll, outside the follower. Re-registering a key affects future queued events.
+     * scheduler cycle, outside the follower. Re-registering a key affects future queued events.
      * @param key event key in authored paths
      * @param action callback; must not block the robot loop
      */

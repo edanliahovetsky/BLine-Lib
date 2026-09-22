@@ -1054,7 +1054,7 @@ class FollowPathTest {
     private static void runExecute(FollowPathV2 command, MutableRobot robot) {
         robot.advanceTime(0.02);
         command.execute();
-        org.wpilib.command2.CommandScheduler.getInstance().getDefaultButtonLoop().poll();
+        org.wpilib.command2.CommandScheduler.getInstance().run();
     }
 
     private static final class MutableRobot {

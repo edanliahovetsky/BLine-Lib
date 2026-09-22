@@ -18,6 +18,40 @@ class JsonUtilsTest {
     java.nio.file.Path tempDir;
 
     @Test
+    void rejectedLoadsCannotPublishProjectDefaults() throws IOException {
+        Path existing = new Path(new Path.TranslationTarget(1, 0));
+        double before = existing.getDefaultGlobalConstraints().getMaxVelocityMetersPerSec();
+        Path.setDefaultHandoffMode(HandoffMode.RADIUS);
+        writeConfig("{\"kinematic_constraints\":{\"default_max_velocity_meters_per_sec\":9,\"default_handoff_mode\":\"progress\"}}");
+        Files.createDirectories(tempDir.resolve("paths"));
+        String body = "\"path_elements\":[{\"type\":\"translation\",\"x_meters\":1,\"y_meters\":0}]";
+        for (String invalid : new String[] {"\"handoff_mode\":\"typo\"", "\"tank_drive_direction\":false"}) {
+            Files.writeString(tempDir.resolve("paths/Rejected.json"), "{" + body + "," + invalid + "}");
+            assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Rejected"));
+            assertEquals(before, existing.getDefaultGlobalConstraints().getMaxVelocityMetersPerSec());
+            assertEquals(HandoffMode.RADIUS, Path.getDefaultHandoffMode());
+            assertThrows(IllegalArgumentException.class, () -> Path.fromJson(
+                "{" + body + ",\"default_global_constraints\":{\"default_max_velocity_meters_per_sec\":9}," + invalid + "}", existing.getDefaultGlobalConstraints()));
+            assertEquals(before, existing.getDefaultGlobalConstraints().getMaxVelocityMetersPerSec());
+        }
+    }
+
+    @Test
+    void malformedPresentConstraintFieldsReportTheirLocation() throws IOException {
+        writeConfig("{}");
+        Files.createDirectories(tempDir.resolve("paths"));
+        String[] entries = {"{\"value\":\"slow\",\"start_ordinal\":0,\"end_ordinal\":1}",
+            "{\"value\":1,\"start_ordinal\":1.9,\"end_ordinal\":2}",
+            "{\"value\":1,\"start_ordinal\":0,\"end_ordinal\":2147483648}"};
+        String[] fields = {"value", "start_ordinal", "end_ordinal"};
+        for (int i = 0; i < entries.length; i++) {
+            Files.writeString(tempDir.resolve("paths/Bad limit.json"), "{\"path_elements\":[{\"type\":\"translation\",\"x_meters\":1,\"y_meters\":0}],\"constraints\":{\"max_velocity_meters_per_sec\":[" + entries[i] + "]}}");
+            var error = assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Bad limit"));
+            assertTrue(error.getMessage().contains("Bad limit.json: constraints.max_velocity_meters_per_sec[0]." + fields[i]), error.getMessage());
+        }
+    }
+
+    @Test
     void publicLoaderReadsTankDirectionWithLegacyFallbackAndContextualErrors() throws IOException {
         writeConfig("{}");
         Files.createDirectories(tempDir.resolve("paths"));

@@ -134,6 +134,43 @@ class ExecutionContractTest {
         }
     }
 
+    @Test void v2EventsDispatchWhileCustomButtonLoopIsActiveAndOutliveTheFollower() {
+        var schedulerV2 = org.wpilib.command2.CommandScheduler.getInstance();
+        var originalLoop = schedulerV2.getActiveButtonLoop();
+        var customLoop = new org.wpilib.event.EventLoop();
+        AtomicInteger events = new AtomicInteger();
+        Robot robot = new Robot();
+        var event = new org.wpilib.command2.Command() {
+            @Override public void initialize() { events.incrementAndGet(); }
+            @Override public boolean runsWhenDisabled() { return true; }
+        };
+        FollowPathV2.registerEventTrigger("custom-loop", event);
+        var follower = v2(robot).build(new Path(new Path.EventTrigger(0, "custom-loop"), new Path.TranslationTarget(2, 0)));
+        try {
+            schedulerV2.setActiveButtonLoop(customLoop);
+            follower.initialize();
+            time += .02;
+            follower.execute();
+            assertEquals(0, events.get());
+            schedulerV2.run();
+            assertEquals(1, events.get());
+            assertTrue(schedulerV2.isScheduled(event));
+            robot.pose = new Pose2d(2, 0, Rotation2d.ZERO);
+            time += .02;
+            follower.execute();
+            assertTrue(follower.isFinished());
+            follower.end(false);
+            assertTrue(schedulerV2.isScheduled(event));
+            schedulerV2.setActiveButtonLoop(originalLoop);
+            schedulerV2.run();
+            assertEquals(1, events.get(), "Switching button loops must not replay events");
+        } finally {
+            follower.end(true);
+            schedulerV2.cancel(event);
+            schedulerV2.setActiveButtonLoop(originalLoop);
+        }
+    }
+
     @Test void finalEventRunsAfterV3FollowerAndItsParentComplete() {
         Robot robot = new Robot();
         AtomicInteger starts = new AtomicInteger();
@@ -260,7 +297,7 @@ class ExecutionContractTest {
             command.initialize();
             time += .02;
             command.execute();
-            org.wpilib.command2.CommandScheduler.getInstance().getDefaultButtonLoop().poll();
+            org.wpilib.command2.CommandScheduler.getInstance().run();
             assertTrue(command.isFinished());
             assertEquals(0, robot.resets);
             assertEquals(0, events.get());
@@ -296,7 +333,7 @@ class ExecutionContractTest {
         command.initialize();
         time += .02;
         command.execute();
-        org.wpilib.command2.CommandScheduler.getInstance().getDefaultButtonLoop().poll();
+        org.wpilib.command2.CommandScheduler.getInstance().run();
         assertEquals(0, robot.resets);
         assertEquals(2, command.getRemainingPathDistanceMeters(), 1e-9);
         assertEquals(1, events.get());
