@@ -134,6 +134,14 @@ Tank ignores intermediate authored rotations. At a stopped endpoint it brakes,
 then aligns to the last waypoint's body heading. A rolling tank exit skips that
 stationary alignment. Swerve/mecanum can rotate while translating.
 
+Tank limiting selects forward speed and turn rate jointly by the approximately closest next
+velocity vector, subject to angular slew and the combined forward/cornering
+acceleration limit. It does not prioritize turn rate or automatically lower the
+speed request for tighter turns. The editor uses the same limiter with ideal,
+PID-free guidance. This one-step choice can sustain a saturated turn instead of
+temporarily turning less to make room for braking; test your paths and controller
+tuning, especially high-speed bends. It is not a guarantee of path convergence.
+
 ## Tank driving direction
 
 The editor's **Drive forward** / **Drive backward** buttons save exported robot
