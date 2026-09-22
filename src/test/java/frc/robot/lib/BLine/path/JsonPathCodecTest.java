@@ -107,8 +107,36 @@ class JsonPathCodecTest {
         assertTrue(assertThrows(IllegalArgumentException.class, () -> new Path(tempDir.toFile(), "Score Left"))
             .getMessage().contains("handoff_mode"));
         writeConfig("{}");
-        Path.loadGlobalConstraints(tempDir.toFile());
+        Path.setProjectDefaults(Path.loadProjectDefaults(tempDir.toFile()));
         assertEquals(HandoffMode.RADIUS, Path.getDefaultHandoffMode(), "Old projects retain radius behavior");
+    }
+
+    @Test
+    void projectDefaultsLoadWithoutSideEffectsAndApplyTogetherToSubsequentExecutions() throws IOException {
+        var original = new Path.DefaultGlobalConstraints(4, 3, 180, 360, .1, 2, .3);
+        Path.setProjectDefaults(new ProjectDefaults(original, HandoffMode.RADIUS));
+        var path = new Path(new Path.TranslationTarget(1, 2));
+        var active = PreparedPath.create(path, java.util.Optional.empty(), java.util.Optional.empty());
+        writeConfig("{\"kinematic_constraints\":{\"default_max_velocity_meters_per_sec\":2,\"default_handoff_mode\":\"progress\"}}");
+        var loaded = Path.loadProjectDefaults(tempDir.toFile());
+        assertEquals(2, loaded.constraints().getMaxVelocityMetersPerSec());
+        assertEquals(HandoffMode.PROGRESS, loaded.handoffMode());
+        assertEquals(2, Path.loadGlobalConstraints(tempDir.toFile()).getMaxVelocityMetersPerSec());
+        assertEquals(4, path.getDefaultGlobalConstraints().getMaxVelocityMetersPerSec());
+        assertEquals(HandoffMode.RADIUS, Path.getDefaultHandoffMode());
+        Path.setProjectDefaults(loaded);
+        var next = PreparedPath.create(path, java.util.Optional.empty(), java.util.Optional.empty());
+        assertEquals(2, next.defaults().maxVelocityMetersPerSec());
+        assertEquals(HandoffMode.PROGRESS, next.handoffMode());
+        assertEquals(4, active.defaults().maxVelocityMetersPerSec());
+        assertEquals(HandoffMode.RADIUS, active.handoffMode());
+        Path.setDefaultGlobalConstraints(original);
+        assertEquals(HandoffMode.PROGRESS, Path.getDefaultHandoffMode(), "Numeric-only setter preserves mode");
+        writeConfig("{\"default_handoff_mode\":\"typo\"}");
+        assertThrows(RuntimeException.class, () -> Path.loadProjectDefaults(tempDir.toFile()));
+        assertEquals(4, path.getDefaultGlobalConstraints().getMaxVelocityMetersPerSec());
+        assertEquals(HandoffMode.PROGRESS, Path.getDefaultHandoffMode());
+        Path.setDefaultHandoffMode(HandoffMode.RADIUS);
     }
 
     @Test

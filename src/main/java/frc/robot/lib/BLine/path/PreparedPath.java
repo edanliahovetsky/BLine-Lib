@@ -60,18 +60,19 @@ public record PreparedPath(
         Path path = source.copy();
         flipped.ifPresent(path::setFlipped);
         mirrored.ifPresent(path::setMirrored);
-        Path.DefaultGlobalConstraints defaults = path.getDefaultGlobalConstraints();
+        ProjectDefaults settings = Path.currentProjectDefaults();
+        Path.DefaultGlobalConstraints defaults = settings.constraints();
         positive(defaults.getMaxVelocityMetersPerSec(), "Default maximum translation velocity");
         positive(defaults.getMaxAccelerationMetersPerSec2(), "Default translation acceleration");
         positive(defaults.getMaxVelocityDegPerSec(), "Default maximum angular velocity");
         positive(defaults.getMaxAccelerationDegPerSec2(), "Default angular acceleration");
         nonnegative(defaults.getIntermediateHandoffRadiusMeters(), "Default handoff distance");
-        double translationTolerance = path.getEndTranslationToleranceMeters();
-        double rotationTolerance = path.getEndRotationToleranceDeg();
+        double translationTolerance = path.getPathConstraints().getEndTranslationToleranceMeters().orElse(defaults.getEndTranslationToleranceMeters());
+        double rotationTolerance = path.getPathConstraints().getEndRotationToleranceDeg().orElse(defaults.getEndRotationToleranceDeg());
         positive(translationTolerance, "End translation tolerance");
         positive(rotationTolerance, "End rotation tolerance");
-        HandoffMode mode = path.getHandoffMode().orElse(Path.getDefaultHandoffMode());
-        List<Pair<Path.PathElement, Path.PathElementConstraint>> elements = path.getPathElementsWithConstraintsNoWaypoints(reportWarnings).stream().map(entry -> {
+        HandoffMode mode = path.getHandoffMode().orElse(settings.handoffMode());
+        List<Pair<Path.PathElement, Path.PathElementConstraint>> elements = path.getPathElementsWithConstraintsNoWaypoints(defaults, reportWarnings).stream().map(entry -> {
             if (entry.getFirst() instanceof Path.TranslationTarget target) {
                 Path.PathElement resolved = new Path.TranslationTarget(target.translation(),
                     Optional.of(target.intermediateHandoffRadiusMeters().orElse(defaults.getIntermediateHandoffRadiusMeters())),

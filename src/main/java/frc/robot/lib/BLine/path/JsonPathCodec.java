@@ -84,10 +84,8 @@ final class JsonPathCodec {
             }
 
             JSONObject json = object(new JSONParser().parse(fileContent), "path");
-            ProjectConfig config = readProjectConfig(autosDir);
-            Path path = buildPathFromJson(json, config.defaults());
-            Path.setDefaultHandoffMode(config.handoffMode());
-            return path;
+            ProjectDefaults config = loadProjectDefaults(autosDir);
+            return buildPathFromJson(json, config.constraints(), config.handoffMode());
         } catch (IOException | ParseException | RuntimeException e) {
             throw new IllegalArgumentException(pathFileName + ": " + e.getMessage(), e);
         }
@@ -145,6 +143,11 @@ final class JsonPathCodec {
      * @return The constructed Path object
      */
     private static Path buildPathFromJson(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints) {
+        return buildPathFromJson(json, defaultGlobalConstraints, null);
+    }
+
+    private static Path buildPathFromJson(JSONObject json, Path.DefaultGlobalConstraints defaultGlobalConstraints,
+                                          HandoffMode projectMode) {
         ArrayList<PathElement> elements = parsePathElements(json);
 
         Path.PathConstraints constraints = parsePathConstraints(json);
@@ -158,21 +161,20 @@ final class JsonPathCodec {
                 throw new IllegalArgumentException("tank_drive_direction: expected \"forward\" or \"backward\", received " + raw);
         }
         Path.DefaultGlobalConstraints globals = defaultGlobalConstraints;
-        ProjectConfig config = null;
         JSONObject globalsJson = json.get("default_global_constraints") == null ? null
             : object(json.get("default_global_constraints"), "default_global_constraints");
         if (globalsJson != null) {
             globals = parseDefaultGlobalConstraints(globalsJson);
         } else if (globals == null) {
-            config = readProjectConfig(projectRoot());
-            globals = config.defaults();
+            ProjectDefaults config = loadProjectDefaults(projectRoot());
+            globals = config.constraints();
+            projectMode = config.handoffMode();
         }
 
         // Only publish shared defaults after all present fields have been parsed successfully.
-        Path path = new Path(elements, constraints, globals);
+        Path path = new Path(elements, constraints, globals, projectMode);
         handoffMode.ifPresent(path::setHandoffMode);
         path.setTankDriveDirection(direction);
-        if (config != null) Path.setDefaultHandoffMode(config.handoffMode());
         return path;
     }
 
@@ -455,14 +457,10 @@ final class JsonPathCodec {
      * @throws RuntimeException if the config file cannot be read or parsed
      */
     static Path.DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
-        ProjectConfig config = readProjectConfig(autosDir);
-        Path.setDefaultHandoffMode(config.handoffMode());
-        return config.defaults();
+        return loadProjectDefaults(autosDir).constraints();
     }
 
-    private record ProjectConfig(Path.DefaultGlobalConstraints defaults, HandoffMode handoffMode) {}
-
-    private static ProjectConfig readProjectConfig(File autosDir) {
+    static ProjectDefaults loadProjectDefaults(File autosDir) {
         try {
             File config = new File(autosDir, "config.json");
 
@@ -482,7 +480,7 @@ final class JsonPathCodec {
             HandoffMode mode = readHandoffMode(lookupValueByKeys(
                 getNestedObject(json, "kinematic_constraints"), json, "default_handoff_mode")
                 .orElse(null), "default_handoff_mode").orElse(HandoffMode.RADIUS);
-            return new ProjectConfig(defaults, mode);
+            return new ProjectDefaults(defaults, mode);
         } catch (IOException | ParseException | RuntimeException e) {
             throw new IllegalArgumentException("config.json: " + e.getMessage(), e);
         }

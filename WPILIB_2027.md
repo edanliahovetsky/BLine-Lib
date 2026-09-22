@@ -111,6 +111,27 @@ execution validation, without logging or changing the path. Construction and
 editing remain permissive. `reorderElements(...)` requires each existing index
 exactly once and rejects invalid orders without changing the path.
 
+## Reusable constraint presets
+
+`inRange(start, end)` copies a preset into an inclusive ordinal range;
+`PathConstraints.combine(...)` combines copies in first-match precedence order:
+
+```java
+var intake = new Path.PathConstraints()
+    .setMaxVelocityMetersPerSec(1.5)
+    .setMaxAccelerationMetersPerSec2(2.0);
+var cruise = new Path.PathConstraints().setMaxVelocityMetersPerSec(4.0);
+path.setPathConstraints(Path.PathConstraints.combine(intake.inRange(1, 3), cruise));
+```
+
+Here translation ordinals 1-3 use intake limits; elsewhere the speed is 4 m/s
+and acceleration inherits the project default. Neither preset is modified.
+Ordinals are zero-based: translation limits count waypoints/translation targets;
+angular limits count waypoints/rotation targets. Events and the measured ghost
+start add no ordinal. Existing ranges are intersected, not shifted. Minimum
+speeds participate too; end tolerances stay path-wide with the first supplied
+value winning. The helper Javadocs include overlap and preset-reuse examples.
+
 ## Handoffs and endpoints
 
 `HandoffMode.RADIUS` uses distance to the target. `HandoffMode.PROGRESS` uses
@@ -133,8 +154,18 @@ JSON stores `handoff_mode` on the path or translation target and
 `default_handoff_mode` in project kinematic constraints. Values are `radius`
 and `progress`. Existing `intermediate_handoff_radius_meters` distance keys
 remain supported in both modes. Shared project defaults remain shared; each
-execution resolves them once. Loading another project configuration changes
-subsequent runs' project defaults.
+execution resolves them once. Loading a path from another project installs its
+configuration for subsequent runs. Reading defaults alone has no side effects:
+
+```java
+var defaults = Path.loadProjectDefaults(autosDirectory);
+Path.setProjectDefaults(defaults); // Apply constraints and handoff mode together
+```
+
+`ProjectDefaults` is immutable and contains `constraints()` and `handoffMode()`.
+The older `loadGlobalConstraints(...)` returns numerical values only and does not
+change either installed setting. `setDefaultGlobalConstraints(...)` changes only
+the numbers; `setDefaultHandoffMode(...)` changes only the mode.
 
 Rotation interpolation uses ordered geometric progress independently of early
 translation handoffs. A join continues from the previously requested heading;
@@ -160,6 +191,14 @@ speed request for tighter turns. The editor uses the same limiter with ideal,
 PID-free guidance. This one-step choice can sustain a saturated turn instead of
 temporarily turning less to make room for braking; test your paths and controller
 tuning, especially high-speed bends. It is not a guarantee of path convergence.
+
+The standalone public `TankRateLimiter.limit(...)` accepts robot-relative
+`ChassisVelocities` requests and previous state, timestep, translation/angular
+acceleration and speed limits, and `DriveDirection`. It returns new velocities
+with `vy = 0`, leaving inputs unchanged. Its Javadoc includes a complete call
+with units. `dt` and limits must be finite and positive. It ignores input `vy`;
+wheel limits and kinematics remain the drivetrain's responsibility. Unlike
+`HolonomicRateLimiter`, the tank utility does not take field-relative velocities.
 
 ## Tank driving direction
 
@@ -238,9 +277,9 @@ The beta groups public types by responsibility:
 
 | Package under `frc.robot.lib.BLine` | Public application API |
 | --- | --- |
-| `path` | `Path` and its nested elements/constraints, `HandoffMode`, `DriveDirection` |
+| `path` | `Path` and its nested elements/constraints, `ProjectDefaults`, `HandoffMode`, `DriveDirection` |
 | `commands` | `FollowPath`, `FollowPathV2`, `BLineCommandsV2` |
-| `following` | `DriveType`, `HolonomicRateLimiter` |
+| `following` | `DriveType`, `HolonomicRateLimiter`, `TankRateLimiter` |
 | `field` | `BLineField`, `FlippingUtil` |
 
 Update older flat-package imports to these packages. Builder arguments and fluent

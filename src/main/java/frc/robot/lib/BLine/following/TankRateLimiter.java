@@ -1,6 +1,8 @@
 package frc.robot.lib.BLine.following;
 
 import frc.robot.lib.BLine.path.DriveDirection;
+import java.util.Objects;
+import org.wpilib.math.kinematics.ChassisVelocities;
 
 /**
  * Jointly limits signed forward speed and turn rate without a wheel model.
@@ -16,7 +18,7 @@ import frc.robot.lib.BLine.path.DriveDirection;
  * may hold motion instead of temporarily steering away from the request to
  * make room for braking. Guidance, not a hidden limiter policy, owns the request.
  */
-final class TankRateLimiter {
+public final class TankRateLimiter {
     private static final int ANGULAR_INTERVALS = 16;
     private static final int REFINEMENTS = 3;
     private static final int INTERVAL_ITERATIONS = 40;
@@ -31,6 +33,81 @@ final class TankRateLimiter {
     private record Candidate(double forward, double omega, double error, double turnError) {}
 
     private TankRateLimiter() {}
+
+    /**
+     * Limits a tank drivetrain's requested robot-relative forward speed and turn rate together.
+     * The caller supplies the previous state and timestep; this utility stores no controller state
+     * and can be used without a path or either command framework.
+     *
+     * <pre>{@code
+     * ChassisVelocities limited = TankRateLimiter.limit(
+     *     requestedRobotRelative, previousRobotRelative,
+     *     0.02, // seconds
+     *     3.0,  // translational acceleration, m/s² (forward + cornering)
+     *     6.0,  // angular acceleration, rad/s²
+     *     4.0,  // forward/backward speed magnitude, m/s
+     *     5.0,  // turn-rate magnitude, rad/s
+     *     DriveDirection.FORWARD
+     * );
+     * // Send limited through the drivetrain's differential-drive kinematics.
+     * // Use the resulting state as the previous state on the next iteration.
+     * }</pre>
+     *
+     * <p>{@code vx} is signed forward speed, and {@code omega} is body turn rate. Input
+     * {@code vy} components are ignored and the output {@code vy} is zero. Neither input is
+     * modified. Forward/backward selects the allowed request sign, not a different element order
+     * or heading. If already moving in the opposite direction, changing direction first brakes
+     * the existing motion within the acceleration limits.
+     *
+     * <p>Translation acceleration includes both forward acceleration and cornering acceleration
+     * {@code v * omega}. No track width or wheel limits are used; wheel/motor feasibility remains
+     * the drivetrain's responsibility. When the previous state exceeds newly lowered limits,
+     * the limiter permits its existing excess without increasing it instead of clipping velocity
+     * instantly. This local objective does not guarantee that every request converges.
+     *
+     * @param desiredSpeeds requested robot-relative velocities (vx in m/s, omega in rad/s)
+     * @param lastSpeeds previous robot-relative velocities in the same units
+     * @param dt elapsed time in seconds, finite and positive
+     * @param maxTranslationalAccelerationMetersPerSec2 combined forward/cornering acceleration limit
+     * @param maxAngularAccelerationRadiansPerSec2 angular acceleration limit
+     * @param maxTranslationalVelocityMetersPerSec forward/backward speed magnitude limit
+     * @param maxAngularVelocityRadiansPerSec turn-rate magnitude limit
+     * @param direction allowed forward/backward request direction
+     * @return new robot-relative velocities with no lateral component
+     * @throws IllegalArgumentException if dt or any limit is not finite and positive, or vx/omega is nonfinite
+     * @throws NullPointerException if either velocity or direction is null
+     */
+    public static ChassisVelocities limit(
+        ChassisVelocities desiredSpeeds, ChassisVelocities lastSpeeds, double dt,
+        double maxTranslationalAccelerationMetersPerSec2,
+        double maxAngularAccelerationRadiansPerSec2,
+        double maxTranslationalVelocityMetersPerSec,
+        double maxAngularVelocityRadiansPerSec, DriveDirection direction
+    ) {
+        Objects.requireNonNull(desiredSpeeds, "desiredSpeeds");
+        Objects.requireNonNull(lastSpeeds, "lastSpeeds");
+        Objects.requireNonNull(direction, "direction");
+        positive(dt, "dt");
+        positive(maxTranslationalAccelerationMetersPerSec2, "maxTranslationalAccelerationMetersPerSec2");
+        positive(maxAngularAccelerationRadiansPerSec2, "maxAngularAccelerationRadiansPerSec2");
+        positive(maxTranslationalVelocityMetersPerSec, "maxTranslationalVelocityMetersPerSec");
+        positive(maxAngularVelocityRadiansPerSec, "maxAngularVelocityRadiansPerSec");
+        if (!Double.isFinite(desiredSpeeds.vx) || !Double.isFinite(desiredSpeeds.omega)
+            || !Double.isFinite(lastSpeeds.vx) || !Double.isFinite(lastSpeeds.omega)) {
+            throw new IllegalArgumentException("Tank velocities require finite vx and omega");
+        }
+        var result = limit(new Velocity(lastSpeeds.vx, lastSpeeds.omega),
+            new Velocity(desiredSpeeds.vx, desiredSpeeds.omega),
+            new Limits(maxTranslationalAccelerationMetersPerSec2, maxAngularAccelerationRadiansPerSec2,
+                maxTranslationalVelocityMetersPerSec, maxAngularVelocityRadiansPerSec), dt, direction);
+        return new ChassisVelocities(result.velocity.forward, 0, result.velocity.omega);
+    }
+
+    private static void positive(double value, String name) {
+        if (!Double.isFinite(value) || value <= 0) {
+            throw new IllegalArgumentException(name + " must be finite and positive");
+        }
+    }
 
     static Result limit(Velocity current, Velocity requested, Limits limits, double dt, DriveDirection direction) {
         if (!(dt > 0) || !Double.isFinite(dt)) return new Result(current, false);

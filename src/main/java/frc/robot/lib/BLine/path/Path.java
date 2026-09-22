@@ -801,6 +801,121 @@ public class Path {
         public Optional<Double> getEndRotationToleranceDeg() { return endRotationToleranceDeg; }
 
         /**
+         * Copies these constraints, restricting their velocity and acceleration ranges to the
+         * inclusive interval {@code startOrdinal..endOrdinal}. This is useful for applying a
+         * reusable preset to different sections of different paths:
+         *
+         * <pre>{@code
+         * var intake = new PathConstraints()
+         *     .setMaxVelocityMetersPerSec(1.5)
+         *     .setMaxAccelerationMetersPerSec2(2.0);
+         * var transit = new PathConstraints().setMaxVelocityMetersPerSec(4.0);
+         * path.setPathConstraints(PathConstraints.combine(
+         *     intake.inRange(1, 3),
+         *     transit.inRange(4, 6)
+         * ));
+         * // Translation ordinals 1-3 use intake's speed and acceleration.
+         * // Ordinals 4-6 use transit's speed and the default acceleration.
+         * // Ordinal 0 uses the project defaults. Neither preset was changed.
+         * }</pre>
+         *
+         * <p>Ordinals start at zero. Translational limits count translation targets and waypoints;
+         * rotational limits count rotation targets and waypoints. Events count toward neither.
+         * The same interval is applied independently to those two ordinal sequences, not to raw
+         * element indices. A measured/ghost start is not an authored element and adds no ordinal.
+         *
+         * <p>Existing ranges are intersected, not shifted: a range of 1-4 restricted to 3-6 becomes
+         * 3-4. Disjoint ranges are removed; unset properties remain unset. End tolerances are copied
+         * unchanged and remain path-wide, even if no velocity/acceleration range intersects.
+         *
+         * @param startOrdinal first included ordinal (nonnegative)
+         * @param endOrdinal last included ordinal, at least startOrdinal
+         * @return an independent constraint set; this object is unchanged
+         * @throws IllegalArgumentException if the requested interval is negative or reversed
+         * @see #combine(PathConstraints...)
+         */
+        public PathConstraints inRange(int startOrdinal, int endOrdinal) {
+            if (startOrdinal < 0 || endOrdinal < startOrdinal) {
+                throw new IllegalArgumentException("Constraint range requires 0 <= startOrdinal <= endOrdinal");
+            }
+            PathConstraints result = copy();
+            result.maxVelocityMetersPerSec = intersect(maxVelocityMetersPerSec, startOrdinal, endOrdinal);
+            result.maxAccelerationMetersPerSec2 = intersect(maxAccelerationMetersPerSec2, startOrdinal, endOrdinal);
+            result.maxVelocityDegPerSec = intersect(maxVelocityDegPerSec, startOrdinal, endOrdinal);
+            result.maxAccelerationDegPerSec2 = intersect(maxAccelerationDegPerSec2, startOrdinal, endOrdinal);
+            result.minVelocityMetersPerSec = intersect(minVelocityMetersPerSec, startOrdinal, endOrdinal);
+            result.minVelocityDegPerSec = intersect(minVelocityDegPerSec, startOrdinal, endOrdinal);
+            return result;
+        }
+
+        /**
+         * Combines constraint sets into a new object, preserving argument and range order.
+         * Inputs are not modified or retained as mutable lists.
+         *
+         * <p>For each constraint type, the first matching range wins. Values are not added,
+         * averaged, or automatically reduced to the strictest limit. Put section overrides before
+         * a whole-path fallback:
+         *
+         * <pre>{@code
+         * var slow = new PathConstraints().setMaxVelocityMetersPerSec(1.5);
+         * var cruise = new PathConstraints().setMaxVelocityMetersPerSec(4.0);
+         * var limits = PathConstraints.combine(slow.inRange(1, 3), cruise);
+         * // Speed is 1.5 m/s at ordinals 1-3 and 4.0 m/s elsewhere.
+         * // Reversing the arguments would make cruise win everywhere.
+         * }</pre>
+         *
+         * <p>Maximum/minimum translation and angular speeds, and both accelerations, are combined
+         * independently. Each end tolerance uses the first explicitly supplied value and remains
+         * path-wide. With no matching range or explicit tolerance, normal project defaults apply.
+         * Subsequent edits to an input do not update an already combined result; combine again
+         * and call {@link Path#setPathConstraints(PathConstraints)} to apply changed presets.
+         *
+         * @param constraints constraint sets in precedence order (no null entries)
+         * @return independent combined constraints, or empty constraints for no arguments
+         * @throws NullPointerException if the array or an entry is null
+         */
+        public static PathConstraints combine(PathConstraints... constraints) {
+            java.util.Objects.requireNonNull(constraints, "constraints");
+            PathConstraints result = new PathConstraints();
+            for (PathConstraints source : constraints) {
+                java.util.Objects.requireNonNull(source, "constraint set");
+                result.maxVelocityMetersPerSec = append(result.maxVelocityMetersPerSec, source.maxVelocityMetersPerSec);
+                result.maxAccelerationMetersPerSec2 = append(result.maxAccelerationMetersPerSec2, source.maxAccelerationMetersPerSec2);
+                result.maxVelocityDegPerSec = append(result.maxVelocityDegPerSec, source.maxVelocityDegPerSec);
+                result.maxAccelerationDegPerSec2 = append(result.maxAccelerationDegPerSec2, source.maxAccelerationDegPerSec2);
+                result.minVelocityMetersPerSec = append(result.minVelocityMetersPerSec, source.minVelocityMetersPerSec);
+                result.minVelocityDegPerSec = append(result.minVelocityDegPerSec, source.minVelocityDegPerSec);
+                if (result.endTranslationToleranceMeters.isEmpty()) result.endTranslationToleranceMeters = source.endTranslationToleranceMeters;
+                if (result.endRotationToleranceDeg.isEmpty()) result.endRotationToleranceDeg = source.endRotationToleranceDeg;
+            }
+            return result;
+        }
+
+        private static Optional<ArrayList<RangedConstraint>> intersect(
+            Optional<ArrayList<RangedConstraint>> ranges, int start, int end
+        ) {
+            return ranges.map(values -> {
+                ArrayList<RangedConstraint> result = new ArrayList<>();
+                for (RangedConstraint value : values) {
+                    int low = Math.max(start, value.startOrdinal());
+                    int high = Math.min(end, value.endOrdinal());
+                    if (low <= high) result.add(new RangedConstraint(value.value(), low, high));
+                }
+                return result;
+            });
+        }
+
+        private static Optional<ArrayList<RangedConstraint>> append(
+            Optional<ArrayList<RangedConstraint>> first, Optional<ArrayList<RangedConstraint>> second
+        ) {
+            if (first.isEmpty() && second.isEmpty()) return Optional.empty();
+            ArrayList<RangedConstraint> result = new ArrayList<>();
+            first.ifPresent(result::addAll);
+            second.ifPresent(result::addAll);
+            return Optional.of(result);
+        }
+
+        /**
          * Creates a deep copy of these constraints.
          * 
          * @return A new PathConstraints with the same values
@@ -821,16 +936,17 @@ public class Path {
 
     private List<PathElement> pathElements;
     private PathConstraints pathConstraints;
-    private static DefaultGlobalConstraints defaultGlobalConstraints = null;
+    // The numerical defaults are loaded lazily when the first path needs them.
+    private record DefaultState(DefaultGlobalConstraints constraints, HandoffMode handoffMode) {}
+    private static volatile DefaultState defaultState = new DefaultState(null, HandoffMode.RADIUS);
     private boolean flipped = false;
     private boolean mirrored = false;
     private Optional<HandoffMode> handoffMode = Optional.empty();
     private DriveDirection tankDriveDirection = DriveDirection.FORWARD;
-    private static HandoffMode defaultHandoffMode = HandoffMode.RADIUS;
 
     /** Sets the project-wide fallback; active followers retain their resolved settings. */
     public static void setDefaultHandoffMode(HandoffMode mode) {
-        defaultHandoffMode = java.util.Objects.requireNonNull(mode, "mode");
+        defaultState = new DefaultState(defaultState.constraints(), java.util.Objects.requireNonNull(mode, "mode"));
     }
 
     /**
@@ -849,7 +965,7 @@ public class Path {
     public DriveDirection getTankDriveDirection() { return tankDriveDirection; }
 
     /** @return the project-wide default handoff mode */
-    public static HandoffMode getDefaultHandoffMode() { return defaultHandoffMode; }
+    public static HandoffMode getDefaultHandoffMode() { return defaultState.handoffMode(); }
 
     /** @return this path, overriding the project default */
     public Path setHandoffMode(HandoffMode mode) { handoffMode = Optional.of(mode); return this; }
@@ -870,28 +986,16 @@ public class Path {
      * @throws RuntimeException if defaultGlobalConstraints is null and config cannot be loaded
      */
     public Path(List<PathElement> pathElements, PathConstraints constraints, DefaultGlobalConstraints defaultGlobalConstraints) {
-        if (pathElements == null) {
-            throw new IllegalArgumentException("pathElements cannot be null");
-        }
-        if (constraints == null) {
-            constraints = new PathConstraints();
-        }
-        if (defaultGlobalConstraints == null) {
-            try {
-                defaultGlobalConstraints = JsonPathCodec.loadGlobalConstraints(JsonPathCodec.projectRoot());
-            } catch (RuntimeException e) {
-                // Allow defaultGlobalConstraints to remain null if loading fails
-                throw new RuntimeException("Failed to load default global constraints", e);
-            }
-        }
-        
-        this.pathElements = new ArrayList<>(pathElements);
-        this.pathConstraints = constraints.copy();
-        if (defaultGlobalConstraints != null) {
-            Path.defaultGlobalConstraints = defaultGlobalConstraints.copy();
-        }
-        
+        this(pathElements, constraints, defaultGlobalConstraints, null);
+    }
 
+    Path(List<PathElement> pathElements, PathConstraints constraints, DefaultGlobalConstraints globals, HandoffMode mode) {
+        if (pathElements == null) throw new IllegalArgumentException("pathElements cannot be null");
+        ProjectDefaults settings = globals == null ? loadProjectDefaults(JsonPathCodec.projectRoot())
+            : new ProjectDefaults(globals, mode == null ? getDefaultHandoffMode() : mode);
+        this.pathElements = new ArrayList<>(pathElements);
+        this.pathConstraints = constraints == null ? new PathConstraints() : constraints.copy();
+        setProjectDefaults(settings);
     }
 
     /**
@@ -900,7 +1004,7 @@ public class Path {
      * @param pathElements The path elements defining the path
      */
     public Path(PathElement... pathElements) {
-        this(List.of(pathElements), null, Path.defaultGlobalConstraints);
+        this(List.of(pathElements), null, defaultState.constraints());
     }
 
     /**
@@ -910,7 +1014,7 @@ public class Path {
      * @param pathElements The path elements defining the path
      */
     public Path(PathConstraints constraints, PathElement... pathElements) {
-        this(List.of(pathElements), constraints, Path.defaultGlobalConstraints);
+        this(List.of(pathElements), constraints, defaultState.constraints());
     }
 
     /**
@@ -930,7 +1034,7 @@ public class Path {
      * @param pathElements The list of path elements
      */
     public Path(List<PathElement> pathElements) {
-        this(pathElements, null, Path.defaultGlobalConstraints);
+        this(pathElements, null, defaultState.constraints());
     }
 
     /**
@@ -940,7 +1044,7 @@ public class Path {
      * @param constraints The path-specific constraints
      */
     public Path(List<PathElement> pathElements, PathConstraints constraints) {
-        this(pathElements, constraints, Path.defaultGlobalConstraints);
+        this(pathElements, constraints, defaultState.constraints());
     }
 
     /**
@@ -981,12 +1085,46 @@ public class Path {
     }
 
     /**
-     * Loads project defaults from config.json, including the project's handoff-mode default.
+     * Reads numerical defaults from config.json without applying them or changing handoff mode.
+     * Use {@link #loadProjectDefaults(File)} to obtain the complete project configuration.
      * @param autosDir project directory containing config.json
      * @return loaded motion constraints
      */
     public static DefaultGlobalConstraints loadGlobalConstraints(File autosDir) {
         return JsonPathCodec.loadGlobalConstraints(autosDir);
+    }
+
+    /**
+     * Reads numerical constraints and the default handoff mode from config.json without applying them.
+     *
+     * <pre>{@code
+     * var defaults = Path.loadProjectDefaults(autosDirectory);
+     * Path.setProjectDefaults(defaults);
+     * }</pre>
+     *
+     * @param autosDir directory containing config.json
+     * @return the complete project defaults; a missing handoff mode resolves to Radius
+     * @throws RuntimeException if the configuration cannot be read or parsed
+     */
+    public static ProjectDefaults loadProjectDefaults(File autosDir) {
+        return JsonPathCodec.loadProjectDefaults(autosDir);
+    }
+
+    /**
+     * Installs numerical defaults and the handoff mode together for subsequent path executions.
+     * Does not modify authored overrides or active executions. Numerical validity is checked
+     * when following or explicitly calling {@link #isValid()}, not while configuring defaults.
+     *
+     * @param defaults complete project defaults (not null)
+     */
+    public static void setProjectDefaults(ProjectDefaults defaults) {
+        java.util.Objects.requireNonNull(defaults, "defaults");
+        defaultState = new DefaultState(defaults.constraints(), defaults.handoffMode());
+    }
+
+    static ProjectDefaults currentProjectDefaults() {
+        DefaultState state = defaultState;
+        return new ProjectDefaults(state.constraints(), state.handoffMode());
     }
 
     /**
@@ -1048,7 +1186,7 @@ public class Path {
      * @return A copy of the default global constraints
      */
     public DefaultGlobalConstraints getDefaultGlobalConstraints() {
-        return defaultGlobalConstraints.copy();
+        return defaultState.constraints().copy();
     }
 
     /**
@@ -1063,7 +1201,7 @@ public class Path {
         if (defaultGlobalConstraints == null) {
             throw new IllegalArgumentException("defaultGlobalConstraints cannot be null");
         }
-        Path.defaultGlobalConstraints = defaultGlobalConstraints.copy();
+        defaultState = new DefaultState(defaultGlobalConstraints.copy(), getDefaultHandoffMode());
     }
 
     /**
@@ -1092,7 +1230,7 @@ public class Path {
      * @return The end translation tolerance in meters
      */
     public double getEndTranslationToleranceMeters() {
-        return pathConstraints.getEndTranslationToleranceMeters().orElse(defaultGlobalConstraints.getEndTranslationToleranceMeters());
+        return pathConstraints.getEndTranslationToleranceMeters().orElse(defaultState.constraints().getEndTranslationToleranceMeters());
     }
 
     /**
@@ -1101,7 +1239,7 @@ public class Path {
      * @return The end rotation tolerance in degrees
      */
     public double getEndRotationToleranceDeg() {
-        return pathConstraints.getEndRotationToleranceDeg().orElse(defaultGlobalConstraints.getEndRotationToleranceDeg());
+        return pathConstraints.getEndRotationToleranceDeg().orElse(defaultState.constraints().getEndRotationToleranceDeg());
     }
 
     /**
@@ -1288,10 +1426,12 @@ public class Path {
      * @return List of (PathElement, PathElementConstraint) pairs
      */
     List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints() {
-        return getPathElementsWithConstraints(true);
+        return getPathElementsWithConstraints(defaultState.constraints(), true);
     }
 
-    private List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints(boolean reportWarnings) {
+    private List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraints(
+        DefaultGlobalConstraints defaultGlobalConstraints, boolean reportWarnings
+    ) {
         if (elementValidationError().isPresent()) {
             return new ArrayList<>();
         }
@@ -1411,15 +1551,17 @@ public class Path {
      * @return List of (PathElement, PathElementConstraint) pairs with waypoints expanded
      */
     List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints() {
-        return getPathElementsWithConstraintsNoWaypoints(true);
+        return getPathElementsWithConstraintsNoWaypoints(defaultState.constraints(), true);
     }
 
-    List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints(boolean reportWarnings) {
+    List<Pair<PathElement, PathElementConstraint>> getPathElementsWithConstraintsNoWaypoints(
+        DefaultGlobalConstraints defaults, boolean reportWarnings
+    ) {
         if (elementValidationError().isPresent()) {
             return new ArrayList<>();
         }
         
-        List<Pair<PathElement, PathElementConstraint>> elementsWithConstraints = getPathElementsWithConstraints(reportWarnings);
+        List<Pair<PathElement, PathElementConstraint>> elementsWithConstraints = getPathElementsWithConstraints(defaults, reportWarnings);
         List<Pair<PathElement, PathElementConstraint>> out = new ArrayList<>();
         for (int i = 0; i < elementsWithConstraints.size(); i++) {
             PathElement element = elementsWithConstraints.get(i).getFirst();

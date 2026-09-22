@@ -12,12 +12,62 @@ import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.util.Pair;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class PathConstraintsTest {
     private static final Path.DefaultGlobalConstraints GLOBALS =
         new Path.DefaultGlobalConstraints(5.0, 6.0, 700.0, 1400.0, 0.05, 2.0, 0.2);
+
+    @Test
+    void reusablePresetsResolveRangesAndOverlapsWithoutSharingMutableState() {
+        var intake = new Path.PathConstraints().setMaxVelocityMetersPerSec(1.5)
+            .setMaxAccelerationMetersPerSec2(2).setMinVelocityMetersPerSec(.4)
+            .setMaxVelocityDegPerSec(90).setMaxAccelerationDegPerSec2(180).setMinVelocityDegPerSec(15)
+            .setEndTranslationToleranceMeters(.1);
+        var transit = new Path.PathConstraints().setMaxVelocityMetersPerSec(4)
+            .setEndTranslationToleranceMeters(.2).setEndRotationToleranceDeg(5);
+        var limits = Path.PathConstraints.combine(intake.inRange(1, 2), transit);
+        var p = new Path(List.of(new Path.Waypoint(0, 0, new Rotation2d()),
+            new Path.EventTrigger(.2, "intake"), new Path.TranslationTarget(1, 0),
+            new Path.RotationTarget(new Rotation2d(), .5), new Path.TranslationTarget(2, 0),
+            new Path.TranslationTarget(3, 0)), limits, GLOBALS);
+        intake.setMaxVelocityMetersPerSec(9);
+        transit.setMaxVelocityMetersPerSec(8);
+        limits.setMaxVelocityMetersPerSec(7);
+        var resolved = p.getPathElementsWithConstraints();
+        var first = (Path.WaypointConstraint) resolved.get(0).getSecond();
+        var slow = (Path.TranslationTargetConstraint) resolved.get(2).getSecond();
+        var turn = (Path.RotationTargetConstraint) resolved.get(3).getSecond();
+        var fast = (Path.TranslationTargetConstraint) resolved.get(5).getSecond();
+        assertEquals(4, first.maxVelocityMetersPerSec());
+        assertEquals(1.5, slow.maxVelocityMetersPerSec());
+        assertEquals(2, slow.maxAccelerationMetersPerSec2());
+        assertEquals(.4, slow.minVelocityMetersPerSec());
+        assertEquals(90, turn.maxVelocityDegPerSec());
+        assertEquals(180, turn.maxAccelerationDegPerSec2());
+        assertEquals(15, turn.minVelocityDegPerSec());
+        assertEquals(4, fast.maxVelocityMetersPerSec());
+        assertEquals(GLOBALS.getMaxAccelerationMetersPerSec2(), fast.maxAccelerationMetersPerSec2());
+        assertEquals(.1, p.getEndTranslationToleranceMeters());
+        assertEquals(5, p.getEndRotationToleranceDeg());
+        assertEquals(9, intake.getMaxVelocityMetersPerSec().orElseThrow().getFirst().value());
+    }
+
+    @Test
+    void rangeIntersectionKeepsAbsoluteOrdinalsAndWholePathTolerances() {
+        var source = new Path.PathConstraints().setMaxVelocityMetersPerSec(
+            new Path.RangedConstraint(1, 1, 4), new Path.RangedConstraint(2, 8, 10))
+            .setEndTranslationToleranceMeters(.2);
+        var restricted = source.inRange(3, 6);
+        assertEquals(List.of(new Path.RangedConstraint(1, 3, 4)), restricted.getMaxVelocityMetersPerSec().orElseThrow());
+        assertEquals(List.of(), source.inRange(5, 6).getMaxVelocityMetersPerSec().orElseThrow());
+        assertTrue(restricted.getMinVelocityMetersPerSec().isEmpty());
+        assertEquals(.2, restricted.getEndTranslationToleranceMeters().orElseThrow());
+        assertEquals(2, source.getMaxVelocityMetersPerSec().orElseThrow().size());
+        assertThrows(IllegalArgumentException.class, () -> source.inRange(-1, 2));
+        assertThrows(IllegalArgumentException.class, () -> source.inRange(3, 2));
+        assertTrue(Path.PathConstraints.combine().getMaxVelocityMetersPerSec().isEmpty());
+    }
 
     @Test
     void copyPreservesAllMinimumConstraintRanges() {

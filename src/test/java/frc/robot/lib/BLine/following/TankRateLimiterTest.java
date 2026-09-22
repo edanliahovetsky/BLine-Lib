@@ -3,6 +3,7 @@ package frc.robot.lib.BLine.following;
 import frc.robot.lib.BLine.path.DriveDirection;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
+import org.wpilib.math.kinematics.ChassisVelocities;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TankRateLimiterTest {
@@ -19,9 +20,11 @@ class TankRateLimiterTest {
             var request = new TankRateLimiter.Velocity(random.nextDouble(-5, 5), random.nextDouble(-8, 8));
             var direction = trial % 2 == 0 ? DriveDirection.FORWARD : DriveDirection.BACKWARD;
             double dt = trial % 3 == 0 ? 0.005 : trial % 3 == 1 ? 0.02 : 0.04;
-            var result = TankRateLimiter.limit(current, request, limits, dt, direction);
-            assertFalse(result.recovering());
-            double nextV = result.velocity().forward(), nextW = result.velocity().omega();
+            var result = TankRateLimiter.limit(
+                new ChassisVelocities(request.forward(), 0, request.omega()),
+                new ChassisVelocities(current.forward(), 0, current.omega()),
+                dt, limits.acceleration(), limits.angularAcceleration(), limits.speed(), limits.omega(), direction);
+            double nextV = result.vx, nextW = result.omega;
             assertTrue(Math.abs(nextV) <= 3.5 + 1e-8);
             assertTrue(Math.abs(nextW) <= 2.5 + 1e-8);
             assertTrue(Math.abs(nextW - w) <= 4 * dt + 1e-8);
