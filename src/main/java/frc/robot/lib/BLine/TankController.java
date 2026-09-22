@@ -39,6 +39,7 @@ final class TankController {
         return result;
     }
 
+    void stop() { command = new TankRateLimiter.Velocity(0, 0); }
     void overrideOmega(double omega) { command = new TankRateLimiter.Velocity(command.forward(), omega); }
     TankRateLimiter.Velocity commandedVelocity() { return command; }
 }
