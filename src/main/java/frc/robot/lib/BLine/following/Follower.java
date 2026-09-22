@@ -1,6 +1,5 @@
 package frc.robot.lib.BLine.following;
 
-import frc.robot.lib.BLine.commands.FollowPath;
 import frc.robot.lib.BLine.path.DriveDirection;
 import frc.robot.lib.BLine.path.HandoffMode;
 import frc.robot.lib.BLine.path.Path.EventTrigger;
