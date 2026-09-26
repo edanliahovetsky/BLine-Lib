@@ -169,6 +169,9 @@ Read the **[full white paper](https://docs.google.com/document/d/1Tc87YKWHtsEMEv
 
 ## Build From Source
 
+See [Contributing](CONTRIBUTING.md) for stable and beta branches, release
+promotion, and local worktrees.
+
 ```bash
 ./gradlew build
 ```
