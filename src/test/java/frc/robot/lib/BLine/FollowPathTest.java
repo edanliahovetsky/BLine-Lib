@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import edu.wpi.first.math.Pair;
 import edu.wpi.first.math.controller.PIDController;
@@ -890,6 +891,37 @@ class FollowPathTest {
         }
     }
 
+    @Test
+    void warmupCommandIsBuiltAndRunsWhileDisabled() {
+        // buildWarmupCommand decorates with withTimeout(...), which constructs a WaitCommand/Timer
+        // that loads WPILib HAL natives. Skip when those natives are unavailable (e.g. headless CI
+        // without extracted natives); the test still runs in a full WPILib test environment.
+        assumeTrue(isWpilibHalRuntimeAvailable(), "WPILib HAL runtime is not available");
+
+        MutableRobot robot = new MutableRobot(new Pose2d(0.0, 0.0, new Rotation2d()));
+        AtomicInteger driveConsumerCalls = new AtomicInteger(0);
+        AtomicInteger poseResetCalls = new AtomicInteger(0);
+
+        edu.wpi.first.wpilibj2.command.Command warmup = new FollowPath.Builder(
+            new TestSubsystem(),
+            robot::getPose,
+            robot::getRobotRelativeSpeeds,
+            speeds -> driveConsumerCalls.incrementAndGet(),
+            new PIDController(5.0, 0.0, 0.0),
+            new PIDController(5.0, 0.0, 0.0),
+            new PIDController(0.0, 0.0, 0.0)
+        ).withPoseReset(pose -> poseResetCalls.incrementAndGet())
+            .buildWarmupCommand();
+
+        assertNotNull(warmup, "Warm-up command must be constructible from a builder");
+        assertTrue(warmup.runsWhenDisabled(),
+            "Warm-up command must run while the robot is disabled so it can warm up in robotInit");
+        // The warm-up overrides the builder's drive consumer and pose-reset consumer, so neither
+        // is captured by the returned command. Building it must not touch the real robot wiring.
+        assertEquals(0, driveConsumerCalls.get(), "Building warm-up must not invoke the drive consumer");
+        assertEquals(0, poseResetCalls.get(), "Building warm-up must not invoke the pose-reset consumer");
+    }
+
     private static FollowPath createCommand(Path path, MutableRobot robot) {
         return createCommand(path, robot, false);
     }
@@ -916,6 +948,29 @@ class FollowPathTest {
     }
 
     private static final class TestSubsystem implements Subsystem {}
+
+    private static boolean isWpilibHalRuntimeAvailable() {
+        try {
+            ClassLoader classLoader = FollowPathTest.class.getClassLoader();
+            Class.forName("edu.wpi.first.hal.NotifierJNI", false, classLoader);
+            return isLibraryOnPath("wpiHaljni") && isLibraryOnPath("wpiutil");
+        } catch (ClassNotFoundException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isLibraryOnPath(String libraryName) {
+        String mappedLibraryName = System.mapLibraryName(libraryName);
+        String[] libraryPaths = System.getProperty("java.library.path", "")
+            .split(java.io.File.pathSeparator);
+        for (String libraryPath : libraryPaths) {
+            if (!libraryPath.isBlank()
+                && java.nio.file.Files.exists(java.nio.file.Path.of(libraryPath, mappedLibraryName))) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static String newEventKey(String prefix) {
         return prefix + "-" + EVENT_KEY_COUNTER.incrementAndGet();

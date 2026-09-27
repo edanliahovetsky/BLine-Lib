@@ -10,6 +10,7 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.lib.BLine.Path.PathElement;
 import frc.robot.lib.BLine.Path.PathElementConstraint;
@@ -106,6 +107,17 @@ public class FollowPath extends Command {
     private static final double T_RATIO_EPSILON = 1e-9;
     // Explicit sentinel for "no active rotation target selected".
     private static final int NO_ACTIVE_ROTATION_INDEX = -1;
+    // Default duration of the one-shot JIT warm-up command (see Builder#buildWarmupCommand).
+    private static final double DEFAULT_WARMUP_TIMEOUT_SECONDS = 2.0;
+    // Throwaway path used only to exercise the path-follower hot code during warm-up.
+    // It intentionally contains a translation handoff and a profiled rotation so the
+    // JIT compiles the segment advancement, rotation interpolation, and cross-track math.
+    // The FollowPath constructor copies the path it is given, so this shared instance is
+    // never mutated and is safe to reuse across warm-up commands.
+    private static final Path WARMUP_PATH = new Path(
+        new Path.Waypoint(1.0, 1.0, Rotation2d.fromDegrees(0)),
+        new Path.TranslationTarget(3.0, 3.0),
+        new Path.Waypoint(5.0, 1.0, Rotation2d.fromDegrees(90)));
     // Defaults to FPGA-backed time but is overrideable in tests for deterministic simulation.
     private static Supplier<Double> timestampSupplier = Timer::getTimestamp;
     private static Consumer<Pair<String, Pose2d>> poseLoggingConsumer = value -> {};
@@ -558,6 +570,90 @@ public class FollowPath extends Command {
                 rotationController,
                 crossTrackController
             );
+        }
+
+        /**
+         * Builds a one-shot JIT (just-in-time) warm-up command for the path follower.
+         *
+         * <p>The first time a {@link FollowPath} command runs, the JVM has not yet
+         * compiled the path-following hot code, so that first autonomous loop is far
+         * slower than steady state. On a real match this shows up as a timing spike at
+         * the very start of autonomous. Running this warm-up command once while the robot
+         * is still disabled forces the JVM to compile that code ahead of time, so the real
+         * autonomous run starts at full speed.
+         *
+         * <p>The returned command runs the path follower on a small throwaway
+         * {@linkplain #WARMUP_PATH internal path} that exercises translation handoffs,
+         * profiled rotation, and cross-track correction, using the drive subsystem, pose
+         * supplier, speeds supplier, and PID controllers configured on this builder.
+         * To guarantee the robot never moves and odometry is never touched, this method
+         * <b>ignores</b> the builder's drive output consumer and pose-reset consumer:
+         * <ul>
+         *   <li>commanded chassis speeds are discarded (the robot stays still),</li>
+         *   <li>no pose reset is performed (odometry is left untouched),</li>
+         *   <li>alliance flipping and mirroring are disabled (the path is never moved).</li>
+         * </ul>
+         *
+         * <p>Because the drive output is discarded, the robot never actually reaches the
+         * end of the path, so the command cannot finish on its own. It is therefore bounded
+         * by a timeout and decorated with {@code ignoringDisable(true)} so it can run during
+         * {@code robotInit()} while the robot is disabled.
+         *
+         * <h2>Where to use it</h2>
+         * <p>Schedule it exactly once at startup, typically from {@code Robot.robotInit()}:
+         * <pre>{@code
+         * // In RobotContainer:
+         * public Command getWarmupCommand() {
+         *     return pathBuilder.buildWarmupCommand();
+         * }
+         *
+         * // In Robot.robotInit():
+         * CommandScheduler.getInstance().schedule(robotContainer.getWarmupCommand());
+         * }</pre>
+         *
+         * <p>The returned command is already decorated with the timeout and
+         * {@code ignoringDisable(true)}; schedule it directly rather than wrapping it again.
+         * It requires the drive subsystem, so do not schedule it at the same time as a real
+         * path-following command.
+         *
+         * @return a disabled-safe, timeout-bounded warm-up command that does not move the robot
+         */
+        public Command buildWarmupCommand() {
+            return buildWarmupCommand(DEFAULT_WARMUP_TIMEOUT_SECONDS);
+        }
+
+        /**
+         * Builds a one-shot JIT warm-up command with a custom timeout.
+         *
+         * <p>See {@link #buildWarmupCommand()} for full behavior. This overload only changes
+         * how long the warm-up runs before it ends. The default of
+         * {@value FollowPath#DEFAULT_WARMUP_TIMEOUT_SECONDS} seconds is enough to compile the
+         * hot path on a roboRIO; shorten it only if startup time is tight, and keep it long
+         * enough for the follower to execute many loops.
+         *
+         * @param timeoutSeconds how long the warm-up command runs before ending, in seconds
+         * @return a disabled-safe, timeout-bounded warm-up command that does not move the robot
+         */
+        public Command buildWarmupCommand(double timeoutSeconds) {
+            FollowPath warmupCommand = new FollowPath(
+                WARMUP_PATH,
+                driveSubsystem,
+                poseSupplier,
+                robotRelativeSpeedsSupplier,
+                speeds -> {},   // discard drive output so the robot never moves
+                () -> false,    // never flip the warm-up path
+                () -> false,    // never mirror the warm-up path
+                pose -> {},     // never reset odometry
+                useTRatioBasedTranslationHandoffs,
+                translationController,
+                rotationController,
+                crossTrackController
+            );
+
+            return warmupCommand
+                .withTimeout(timeoutSeconds)
+                .andThen(Commands.print("[BLine] Warmup finished"))
+                .ignoringDisable(true);
         }
     }
 

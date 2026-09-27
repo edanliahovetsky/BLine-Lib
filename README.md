@@ -142,6 +142,39 @@ FollowPath.overrideRotation(
 );
 ```
 
+### JIT Warm-Up
+
+The first time a `FollowPath` command runs, the JVM has not yet just-in-time
+(JIT) compiled the path-following hot code, so that very first autonomous loop
+runs much slower than steady state. In a real match this shows up as a timing
+spike at the start of autonomous, right when precision matters most.
+
+BLine bakes in a one-shot warm-up command that forces the JVM to compile that
+code ahead of time, while the robot is still disabled. Build it from the same
+`FollowPath.Builder` you already use for autos and schedule it once at startup:
+
+```java
+// In RobotContainer (reuse the builder you configured for autos):
+public Command getWarmupCommand() {
+    return pathBuilder.buildWarmupCommand();
+}
+
+// In Robot.robotInit():
+CommandScheduler.getInstance().schedule(robotContainer.getWarmupCommand());
+```
+
+The warm-up runs the follower on a small internal throwaway path that exercises
+translation handoffs, profiled rotation, and cross-track correction. It is
+**safe**: it ignores the builder's drive output consumer and pose-reset
+consumer, so commanded speeds are discarded (the robot never moves), odometry is
+never touched, and the path is never flipped or mirrored. The returned command
+already includes a timeout and `ignoringDisable(true)`, so schedule it directly.
+
+Schedule it **once** in `robotInit()` while disabled. Because it requires the
+drive subsystem, do not run it at the same time as a real path-following
+command. Use `buildWarmupCommand(double timeoutSeconds)` if you need a custom
+warm-up duration (the default is 2.0 seconds).
+
 ### Command-Based Autos With Event Triggers
 
 When a BLine path contains event triggers that schedule WPILib commands, prefer
