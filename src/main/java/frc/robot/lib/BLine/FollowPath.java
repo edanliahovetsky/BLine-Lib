@@ -1138,23 +1138,6 @@ public class FollowPath extends Command {
     }
 
     /**
-     * Gets the start point for the current translation segment.
-     *
-     * <p>This walks backward from the current translation element to find the
-     * previous translation target. If none exists, it falls back to the path
-     * initialization pose. This keeps cross-track calculations stable when
-     * translation targets switch.
-     *
-     * @return The start translation for the current segment
-     */
-    private Translation2d getCurrentTranslationSegmentStart() {
-        int previousTranslationIndex = findPreviousTranslationTargetIndex(translationElementIndex - 1);
-        return previousTranslationIndex >= 0
-            ? getTranslationAtIndex(previousTranslationIndex)
-            : pathInitStartPose.getTranslation();
-    }
-
-    /**
      * Processes event triggers in path order until the next trigger is not yet reached.
      */
     private void processEventTriggers(Pose2d currentPose) {
