@@ -1,7 +1,7 @@
 <h1 align="center">BLine-Lib</h1>
 
 <p align="center">
-  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-2027.0.0--beta.1-2563eb" alt="BLine 2027.0.0-beta.1"></a>
+  <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/version-2027.0.0--beta.2-2563eb" alt="BLine 2027.0.0-beta.2"></a>
   <a href="BLine-Lib-2027.json"><img src="https://img.shields.io/badge/WPILib-2027.0.0--alpha--7-c1121f" alt="WPILib 2027.0.0 Alpha 7"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-0f766e" alt="BSD 3-Clause License"></a>
 </p>
@@ -12,7 +12,7 @@ built around practical tuning, quick iteration, and rapid empirical testing in
 time-constrained build-season environments.
 
 > [!IMPORTANT]
-> This is **BLine 2027.0.0-beta.1** for **WPILib 2027.0.0-alpha-7 and Java 25**,
+> This is **BLine 2027.0.0-beta.2** for **WPILib 2027.0.0-alpha-7 and Java 25**,
 > with Commands v3 and v2, swerve, tank and mecanum support.
 > Read the [2027 guide](WPILIB_2027.md) for setup and migration.
 > The `main` branch remains the stable WPILib 2026 release line.
@@ -43,7 +43,7 @@ Libraries**, choose **Install new libraries (online)**, and paste:
 https://raw.githubusercontent.com/edanliahovetsky/BLine-Lib/wpilib-2027/BLine-Lib-2027.json
 ```
 
-Build the robot project to download `v2027.0.0-beta.1` from JitPack. Keep only
+Build the robot project to download `v2027.0.0-beta.2` from JitPack. Keep only
 one BLine vendordep in the project: replace an existing `BLine-Lib.json` when
 migrating to 2027. BLine includes both adapters, but your project must supply
 the matching WPILib command framework. See the [2027 guide](WPILIB_2027.md)

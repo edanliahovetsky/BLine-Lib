@@ -1,7 +1,7 @@
 {
     "fileName": "BLine-Lib-2027.json",
     "name": "BLine-Lib 2027 Beta",
-    "version": "2027.0.0-beta.1",
+    "version": "2027.0.0-beta.2",
     "wpilibYear": "2027_alpha7",
     "uuid": "4b7270e9-4e8d-4e7b-8cf0-5805f12c3c7d",
     "mavenUrls": [
@@ -12,7 +12,7 @@
         {
             "groupId": "com.github.edanliahovetsky",
             "artifactId": "BLine-Lib",
-            "version": "v2027.0.0-beta.1"
+            "version": "v2027.0.0-beta.2"
         }
     ],
     "jniDependencies": [],

@@ -1,6 +1,6 @@
 # BLine-Lib 2027 beta
 
-BLine **2027.0.0-beta.1** targets **WPILib 2027.0.0-alpha-7 and Java 25**.
+BLine **2027.0.0-beta.2** targets **WPILib 2027.0.0-alpha-7 and Java 25**.
 The stable WPILib 2026 release
 remains on [`main`](https://github.com/edanliahovetsky/BLine-Lib).
 Later WPILib alphas require validation before being called supported.
@@ -23,7 +23,7 @@ The command-line equivalent from the robot project is:
 
 Use `gradlew.bat` on Windows. Remove an older `BLine-Lib.json` first so the
 project has only one BLine vendordep. The beta resolves
-`com.github.edanliahovetsky:BLine-Lib:v2027.0.0-beta.1` from JitPack and includes
+`com.github.edanliahovetsky:BLine-Lib:v2027.0.0-beta.2` from JitPack and includes
 binary, sources, and Javadoc jars. Select the command framework in your robot
 project; BLine does not install Commands v2 or v3 for you.
 

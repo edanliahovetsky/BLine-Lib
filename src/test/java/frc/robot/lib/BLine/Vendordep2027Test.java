@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class Vendordep2027Test {
     private static final String BLINE_UUID = "4b7270e9-4e8d-4e7b-8cf0-5805f12c3c7d";
-    private static final String CANDIDATE_TAG = "v2027.0.0-beta.1";
+    private static final String CANDIDATE_TAG = "v2027.0.0-beta.2";
 
     @Test
     void compatibilityVendordepIdentifiesThe2027LineAndExactCandidateTag() throws Exception {
@@ -19,7 +19,7 @@ class Vendordep2027Test {
         JSONObject compatibility = parse("BLine-Lib-2027.json");
 
         assertEquals("BLine-Lib-2027.json", compatibility.get("fileName"));
-        assertEquals("2027.0.0-beta.1", compatibility.get("version"));
+        assertEquals("2027.0.0-beta.2", compatibility.get("version"));
         assertEquals("2027_alpha7", compatibility.get("wpilibYear"));
         assertEquals(BLINE_UUID, compatibility.get("uuid"));
         assertNotEquals(stable.get("jsonUrl"), compatibility.get("jsonUrl"));

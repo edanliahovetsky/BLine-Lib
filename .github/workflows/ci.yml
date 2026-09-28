@@ -5,6 +5,7 @@ on:
     branches: [wpilib-2027]
   push:
     branches: [wpilib-2027]
+    tags: ['v2027.*']
 
 permissions:
   contents: read
