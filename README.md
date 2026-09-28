@@ -25,8 +25,9 @@ time-constrained build-season environments.
 
 `main` remains the stable, default BLine-Lib line for WPILib 2026, and the
 installation guidance below is for that line. Teams evaluating WPILib 2027
-Alpha 6 can use the behavior-compatible [`wpilib-2027` line and its separate
-installation guide](https://github.com/edanliahovetsky/BLine-Lib/blob/wpilib-2027/WPILIB_2027.md).
+Alpha 7 and Java 25 can use the [`wpilib-2027` beta line](https://github.com/edanliahovetsky/BLine-Lib/tree/wpilib-2027).
+Its [setup and migration guide](https://github.com/edanliahovetsky/BLine-Lib/blob/wpilib-2027/WPILIB_2027.md)
+covers the beta API and Commands v2/v3 adapters.
 
 <p align="center">
   <img src="docs/readme/bline-web-demo.gif" alt="BLine Web editor GUI demo" width="900">
