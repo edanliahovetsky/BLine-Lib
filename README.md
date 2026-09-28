@@ -1,7 +1,7 @@
 <h1 align="center">BLine-Lib</h1>
 
 <p align="center">
-  <a href="BLine-Lib.json"><img src="https://img.shields.io/badge/version-v0.9.1-2563eb" alt="Version v0.9.1"></a>
+  <a href="BLine-Lib.json"><img src="https://img.shields.io/badge/version-v0.9.2-2563eb" alt="Version v0.9.2"></a>
   <a href="BLine-Lib.json"><img src="https://img.shields.io/badge/FRC-2026-c1121f" alt="FRC 2026"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-0f766e" alt="BSD 3-Clause License"></a>
 </p>
@@ -73,7 +73,7 @@ Then add the BLine-Lib dependency:
 
 ```gradle
 dependencies {
-    implementation 'com.github.edanliahovetsky:BLine-Lib:v0.9.1'
+    implementation 'com.github.edanliahovetsky:BLine-Lib:v0.9.2'
 }
 ```
 
