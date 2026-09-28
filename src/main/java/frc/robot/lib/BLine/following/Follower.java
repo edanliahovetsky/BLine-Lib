@@ -353,7 +353,7 @@ final class Follower {
         }
         TranslationLimits translationConstraint = (TranslationLimits) pathElementsWithConstraints.get(translationProgress.index()).getSecond();
         var crossTrack = translationProgress.crossTrack(currentPose);
-        var requested = guidance.calculate(currentPose, targetTranslation, remainingDistance, crossTrack.errorMeters(),
+        var requested = guidance.calculate(currentPose, targetTranslation, remainingDistance, crossTrack,
             translationConstraint, rollingEnd || remainingDistance > endTranslationTolerance);
         double vx = requested.vx(), vy = requested.vy();
         logPose("FollowPath/closestPoint", new Pose2d(crossTrack.closestPoint(), currentPose.getRotation()));

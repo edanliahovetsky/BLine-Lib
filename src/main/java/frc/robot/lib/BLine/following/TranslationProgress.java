@@ -17,7 +17,7 @@ final class TranslationProgress {
                    double segmentLength, double segmentProgress) {
         boolean isDegenerate() { return segmentLength < SEGMENT_LENGTH_EPSILON_METERS; }
     }
-    record CrossTrack(Translation2d closestPoint, double errorMeters) {}
+    record CrossTrack(Translation2d closestPoint, double errorMeters, Translation2d leftNormal) {}
 
     private final List<Pair<PathElement, MotionConstraint>> elements;
     private final Translation2d origin;
@@ -66,18 +66,20 @@ final class TranslationProgress {
         return remaining;
     }
 
-    /** Positive error is left of the directed segment; collinear overshoot is not lateral error. */
+    /** Measures sideways distance to the active segment's line. Positive error is on its left. */
     CrossTrack crossTrack(Pose2d pose) {
         Translation2d start = translation(previous(index - 1));
-        Translation2d end = target();
-        Translation2d position = pose.getTranslation();
-        double t = project(start, end, position);
-        Translation2d closest = start.interpolate(end, t);
-        double cross = (end.getX() - start.getX()) * (position.getY() - start.getY())
-            - (end.getY() - start.getY()) * (position.getX() - start.getX());
-        double error = Math.abs(cross) <= SEGMENT_LENGTH_EPSILON_METERS * start.getDistance(end)
-            ? 0 : Math.copySign(position.getDistance(closest), cross);
-        return new CrossTrack(closest, error);
+        Translation2d delta = target().minus(start);
+        double length = delta.getNorm();
+        if (length < SEGMENT_LENGTH_EPSILON_METERS) {
+            return new CrossTrack(start, 0, new Translation2d());
+        }
+        Translation2d normal = new Translation2d(-delta.getY(), delta.getX()).div(length);
+        Translation2d offset = pose.getTranslation().minus(start);
+        double error = offset.getX() * normal.getX() + offset.getY() * normal.getY();
+        // Do not clamp this projection: distance behind an endpoint is not lateral error.
+        Translation2d closest = pose.getTranslation().minus(normal.times(error));
+        return new CrossTrack(closest, error, normal);
     }
 
     boolean eventReached(int eventIndex, Pose2d pose) {

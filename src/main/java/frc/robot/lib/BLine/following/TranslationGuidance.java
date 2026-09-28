@@ -24,7 +24,7 @@ final class TranslationGuidance {
         crossTrack.setTolerance(toleranceMeters);
     }
 
-    Result calculate(Pose2d pose, Translation2d target, double remaining, double crossTrackError,
+    Result calculate(Pose2d pose, Translation2d target, double remaining, TranslationProgress.CrossTrack track,
                      TranslationLimits limits, boolean applyMinimum) {
         double bearing = Math.atan2(target.getY() - pose.getY(), target.getX() - pose.getX());
         double raw = -distance.calculate(remaining, 0);
@@ -32,9 +32,11 @@ final class TranslationGuidance {
         double clamped = Math.clamp(raw, -limits.maxVelocityMetersPerSec(), limits.maxVelocityMetersPerSec());
         double speed = minimumMagnitude(clamped, limits.minVelocityMetersPerSec(), limits.maxVelocityMetersPerSec(), remaining, applyMinimum);
         // CTE is intentionally not clamped here. The final vector goes through the chassis limiter.
-        double correction = -crossTrack.calculate(crossTrackError, 0);
-        double vx = speed * Math.cos(bearing) + correction * Math.cos(bearing - Math.PI / 2);
-        double vy = speed * Math.sin(bearing) + correction * Math.sin(bearing - Math.PI / 2);
+        // Correct toward the line along the segment normal, independent of the target bearing.
+        Translation2d normal = track.leftNormal();
+        double correction = normal.getNorm() == 0 ? 0 : -crossTrack.calculate(track.errorMeters(), 0);
+        double vx = speed * Math.cos(bearing) - correction * normal.getX();
+        double vy = speed * Math.sin(bearing) - correction * normal.getY();
         return new Result(vx, vy, raw, clamped, speed, Math.abs(speed) > Math.abs(clamped) + 1e-9, correction);
     }
 
