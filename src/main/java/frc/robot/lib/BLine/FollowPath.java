@@ -759,15 +759,17 @@ public class FollowPath extends Command {
         double vx = translationControllerOutput * Math.cos(angleToTarget);
         double vy = translationControllerOutput * Math.sin(angleToTarget);
 
-        double crossTrackError = calculateCrossTrackError();
+        CrossTrack crossTrack = calculateCrossTrack(currentPose, currentSegment);
+        logPose("FollowPath/closestPoint", new Pose2d(crossTrack.closestPoint(), currentPose.getRotation()));
+        logDouble("FollowPath/crossTrackError", crossTrack.errorMeters());
 
-        // dont clamp cross track controller as users may prefer to tune their controller to be hyper response to cross track
-        double crossTrackControllerOutput = -crossTrackController.calculate(crossTrackError, 0);
+        // Positive CTE is left of the segment. Correct along its right normal,
+        // leaving the combined velocity to the existing speed/acceleration limiter.
+        double crossTrackControllerOutput = currentSegment.isDegenerate()
+            ? 0 : -crossTrackController.calculate(crossTrack.errorMeters(), 0);
         logDouble("FollowPath/crossTrackControllerOutput", crossTrackControllerOutput);
-
-        // Rotate the cross-track correction into field frame and add it to translation command.
-        vx += crossTrackControllerOutput * Math.cos(angleToTarget - Math.PI / 2);
-        vy += crossTrackControllerOutput * Math.sin(angleToTarget - Math.PI / 2);
+        vx -= crossTrackControllerOutput * crossTrack.leftNormal().getX();
+        vy -= crossTrackControllerOutput * crossTrack.leftNormal().getY();
 
         double targetRotationRad = rotationSample.headingRadians();
         int rotationConstraintIndex = rotationSample.activeIndex();
@@ -1092,45 +1094,21 @@ public class FollowPath extends Command {
         return remainingDistance;
     }
 
-    /**
-     * Calculates the signed cross-track error from the robot to the line between waypoints.
-     * 
-     * <p>Positive values indicate the robot is to the right of the path, negative values
-     * indicate the robot is to the left of the path.
-     * 
-     * @return The signed cross-track error in meters
-     */
-    private double calculateCrossTrackError() {
-        Translation2d targetTranslation = ((TranslationTarget) pathElementsWithConstraints.get(translationElementIndex).getFirst()).translation();
-        Translation2d prevTranslation = getCurrentTranslationSegmentStart();
+    private record CrossTrack(Translation2d closestPoint, double errorMeters, Translation2d leftNormal) {}
 
-        Pose2d currentPose = poseSupplier.get();
-        Translation2d robotPosition = currentPose.getTranslation();
-
-        // Find closest point on the segment using shared projection utility
-        Translation2d closestPoint = calculateProjectedPointOnSegment(prevTranslation, targetTranslation, robotPosition);
-
-        // Calculate signed cross-track error
-        // Positive = right of path, Negative = left of path
-        double pathVectorX = targetTranslation.getX() - prevTranslation.getX();
-        double pathVectorY = targetTranslation.getY() - prevTranslation.getY();
-        double robotVectorX = robotPosition.getX() - prevTranslation.getX();
-        double robotVectorY = robotPosition.getY() - prevTranslation.getY();
-
-        // Cross product to determine side: positive = left, negative = right
-        double crossProduct = pathVectorX * robotVectorY - pathVectorY * robotVectorX;
-
-        // Return signed distance (positive = right of path, negative = left of path)
-        double signedError = robotPosition.getDistance(closestPoint);
-        if (crossProduct < 0) {
-            signedError = -signedError; // Left of path = negative
+    /** Measures sideways distance to the active segment's line, including before or past its endpoints. */
+    private CrossTrack calculateCrossTrack(Pose2d pose, TranslationSegmentState segment) {
+        Translation2d start = segment.startTranslation();
+        if (segment.isDegenerate()) {
+            return new CrossTrack(start, 0, new Translation2d());
         }
-        // Right of path = positive (crossProduct > 0), so no change needed
-
-        logPose("FollowPath/closestPoint", new Pose2d(closestPoint, currentPose.getRotation()));
-        logDouble("FollowPath/crossTrackError", signedError);
-
-        return signedError;
+        Translation2d delta = segment.endTranslation().minus(start);
+        Translation2d normal = new Translation2d(-delta.getY(), delta.getX()).div(segment.segmentLength());
+        Translation2d offset = pose.getTranslation().minus(start);
+        double error = offset.getX() * normal.getX() + offset.getY() * normal.getY();
+        // Do not clamp this projection: distance behind an endpoint is not lateral error.
+        Translation2d closest = pose.getTranslation().minus(normal.times(error));
+        return new CrossTrack(closest, error, normal);
     }
 
     /**
@@ -1157,28 +1135,6 @@ public class FollowPath extends Command {
         double dyPoint = point.getY() - segmentStart.getY();
         double t = (dxPoint * dx + dyPoint * dy) / segmentLengthSquared;
         return Math.max(0.0, Math.min(1.0, t));
-    }
-
-    /**
-     * Calculates the projected point on a segment for a given position.
-     *
-     * @param segmentStart The start of the segment
-     * @param segmentEnd The end of the segment
-     * @param point The point to project
-     * @return The projected point on the segment
-     */
-    private Translation2d calculateProjectedPointOnSegment(
-        Translation2d segmentStart,
-        Translation2d segmentEnd,
-        Translation2d point
-    ) {
-        double t = calculateSegmentProjectionT(segmentStart, segmentEnd, point);
-        double dx = segmentEnd.getX() - segmentStart.getX();
-        double dy = segmentEnd.getY() - segmentStart.getY();
-        return new Translation2d(
-            segmentStart.getX() + t * dx,
-            segmentStart.getY() + t * dy
-        );
     }
 
     /**

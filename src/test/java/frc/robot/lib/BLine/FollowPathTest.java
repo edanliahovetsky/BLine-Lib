@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class FollowPathTest {
@@ -1028,6 +1029,82 @@ class FollowPathTest {
         } finally {
             FlippingUtil.symmetryType = originalSymmetryType;
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, -0.0016", "0, 0", "0, 0.0016", "37, -0.0016", "37, 0.0016", "90, 0.0016", "180, -0.0016"})
+    void crossTrackAfterEarlyHandoffMeasuresOnlySidewaysDistance(double degrees, double offset) {
+        Rotation2d angle = Rotation2d.fromDegrees(degrees);
+        Translation2d tangent = new Translation2d(angle.getCos(), angle.getSin());
+        Translation2d normal = new Translation2d(-angle.getSin(), angle.getCos());
+        MutableRobot robot = new MutableRobot(new Pose2d(tangent.times(-1.2), new Rotation2d()));
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        Map<String, Pose2d> poses = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        FollowPath.setPoseLoggingConsumer(value -> poses.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.TranslationTarget(tangent.times(-1.2)),
+            new Path.TranslationTarget(0, 0, 0.8), new Path.TranslationTarget(tangent.times(2)));
+        FollowPath command = createCrossTrackCommand(path, robot, new PIDController(0.5, 0, 0));
+        command.initialize();
+        robot.setPose(new Pose2d(tangent.times(-0.79).plus(normal.times(offset)), new Rotation2d()));
+        runExecute(command, robot);
+        assertEquals(2, command.getCurrentTranslationElementIndex(), "Exercise the segment after an early handoff");
+        assertEquals(offset, logs.get("FollowPath/crossTrackError"), 1e-9);
+        assertEquals(-0.79 * tangent.getX(), poses.get("FollowPath/closestPoint").getX(), 1e-9);
+        assertEquals(-0.79 * tangent.getY(), poses.get("FollowPath/closestPoint").getY(), 1e-9);
+        assertEquals(-0.5 * offset * normal.getX(), robot.getRobotRelativeSpeeds().vxMetersPerSecond, 1e-9);
+        assertEquals(-0.5 * offset * normal.getY(), robot.getRobotRelativeSpeeds().vyMetersPerSecond, 1e-9);
+        assertEquals(0, logs.get("FollowPath/currentSegmentProgress"), 1e-9,
+            "Handoff progress must remain clamped even when CTE projects before the segment");
+        command.end(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {0.5, 2.5})
+    void crossTrackCorrectionStaysNormalToTheSegmentIncludingPastItsEndpoint(double along) {
+        Rotation2d angle = Rotation2d.fromDegrees(37);
+        Translation2d tangent = new Translation2d(angle.getCos(), angle.getSin());
+        Translation2d normal = new Translation2d(-angle.getSin(), angle.getCos());
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Path path = new Path(new Path.TranslationTarget(0, 0), new Path.TranslationTarget(tangent.times(2)));
+        FollowPath command = createCrossTrackCommand(path, robot, new PIDController(0.5, 0, 0));
+        command.initialize();
+        robot.setPose(new Pose2d(tangent.times(along).plus(normal.times(0.2)), new Rotation2d()));
+        for (int cycle = 0; cycle < 5; cycle++) runExecute(command, robot);
+        assertEquals(-0.1 * normal.getX(), robot.getRobotRelativeSpeeds().vxMetersPerSecond, 1e-9);
+        assertEquals(-0.1 * normal.getY(), robot.getRobotRelativeSpeeds().vyMetersPerSecond, 1e-9);
+        command.end(true);
+    }
+
+    @Test
+    void coincidentSegmentCannotTurnStoredCrossTrackIntegralIntoMotion() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.TranslationTarget(0, 0),
+            new Path.TranslationTarget(1, 0, 0.3), new Path.TranslationTarget(1, 0));
+        FollowPath command = createCrossTrackCommand(path, robot, new PIDController(0.5, 1, 0.1));
+        command.initialize();
+        robot.setPose(new Pose2d(0.2, 0.2, new Rotation2d()));
+        for (int cycle = 0; cycle < 5; cycle++) runExecute(command, robot);
+        robot.setPose(new Pose2d(1, 0.2, new Rotation2d()));
+        for (int cycle = 0; cycle < 10; cycle++) runExecute(command, robot);
+        assertEquals(2, command.getCurrentTranslationElementIndex());
+        assertEquals(0, logs.get("FollowPath/crossTrackError"), 1e-9);
+        assertEquals(0, robot.getRobotRelativeSpeeds().vxMetersPerSecond, 1e-9);
+        assertEquals(0, robot.getRobotRelativeSpeeds().vyMetersPerSecond, 1e-9);
+        command.end(true);
+    }
+
+    private static FollowPath createCrossTrackCommand(Path path, MutableRobot robot, PIDController crossTrack) {
+        return new FollowPath.Builder(
+            new TestSubsystem(), robot::getPose,
+            robot::getRobotRelativeSpeeds, robot::setRobotRelativeSpeeds,
+            new PIDController(0, 0, 0), new PIDController(0, 0, 0), crossTrack
+        ).build(path);
     }
 
     private static FollowPath createCommand(Path path, MutableRobot robot) {
