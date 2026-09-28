@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class FollowPathTest {
     private static final AtomicInteger EVENT_KEY_COUNTER = new AtomicInteger(0);
@@ -53,6 +55,144 @@ class FollowPathTest {
         FollowPath.setBooleanLoggingConsumer(value -> {});
         FollowPath.setTranslationListLoggingConsumer(value -> {});
         FollowPath.clearRotationOverride();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void earlyHandoffDoesNotSkipTheUnfinishedRotationSchedule(boolean useTRatioHandoffs) {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(
+            new Path.PathConstraints().setMaxVelocityDegPerSec(new Path.RangedConstraint(20, 1, 1)),
+            new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(0.5, 0, Rotation2d.fromDegrees(90)), 0.3),
+            new Path.Waypoint(new Pose2d(1.5, 0, Rotation2d.fromDegrees(180)))
+        );
+        FollowPath command = createCommand(path, robot, useTRatioHandoffs);
+        command.initialize();
+        robot.setPose(new Pose2d(0.199999, 0, new Rotation2d()));
+        runExecute(command, robot);
+        double before = logs.get("FollowPath/targetRotationDeg");
+        assertEquals(3, command.getCurrentTranslationElementIndex());
+        robot.setPose(new Pose2d(0.200001, 0, new Rotation2d()));
+        runExecute(command, robot);
+        double after = logs.get("FollowPath/targetRotationDeg");
+        assertEquals(5, command.getCurrentTranslationElementIndex(), "Translation should still hand off early");
+        assertEquals(36, before, 0.001);
+        assertEquals(36, after, 0.001, "Early translation handoff must not jump to the 90 degree anchor");
+        assertTrue(Math.abs(after - before) < 0.001);
+        assertEquals(20, logs.get("FollowPath/maxRotationVelocityDegPerSec"), 1e-9,
+            "The unfinished rotation must keep its own constraint after translation hands off");
+        assertEquals(Math.toRadians(20), logs.get("FollowPath/clampedRotationControllerOutput"), 1e-9);
+        robot.setPose(new Pose2d(0.1, 0, new Rotation2d()));
+        runExecute(command, robot);
+        assertEquals(after, logs.get("FollowPath/targetRotationDeg"), 1e-9,
+            "A backward disturbance must not replay rotation progress");
+        command.end(true);
+    }
+
+    @Test
+    void cornerProjectionJoinPreservesTheOldHeadingAndThenReachesTheFinalHeading() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(90)), 0.7),
+            new Path.Waypoint(new Pose2d(2, 2, Rotation2d.fromDegrees(180))));
+        FollowPath command = createCommand(path, robot);
+        for (int execution = 0; execution < 2; execution++) {
+            robot.setPose(new Pose2d());
+            robot.setRobotRelativeSpeeds(new ChassisSpeeds());
+            command.initialize();
+            robot.setPose(new Pose2d(1.6, 0.39, new Rotation2d()));
+            runExecute(command, robot);
+            assertEquals(72, logs.get("FollowPath/targetRotationDeg"), 1e-6);
+            robot.setPose(new Pose2d(1.61, 0.4, new Rotation2d()));
+            runExecute(command, robot);
+            assertEquals(72.45, logs.get("FollowPath/targetRotationDeg"), 1e-6,
+                "Switching the closer projection must keep the old calculation at the current pose");
+            robot.setPose(new Pose2d(2, 1.2, new Rotation2d()));
+            runExecute(command, robot);
+            assertEquals(126.225, logs.get("FollowPath/targetRotationDeg"), 1e-6);
+            robot.setPose(new Pose2d(2, 2, new Rotation2d()));
+            runExecute(command, robot);
+            assertEquals(180, Math.abs(logs.get("FollowPath/targetRotationDeg")), 1e-6);
+            command.end(true);
+        }
+    }
+
+    @Test
+    void multipleEarlyHandoffsDoNotSkipIntermediateRotation() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(
+            new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(0.5, 0, Rotation2d.fromDegrees(90)), 0.4),
+            new Path.Waypoint(new Pose2d(0.6, 0, Rotation2d.fromDegrees(120)), 0.5),
+            new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(180)))
+        );
+        FollowPath command = createCommand(path, robot);
+        command.initialize();
+        robot.setPose(new Pose2d(0.2, 0, new Rotation2d()));
+        runExecute(command, robot);
+        assertEquals(7, command.getCurrentTranslationElementIndex());
+        assertEquals(36, logs.get("FollowPath/targetRotationDeg"), 1e-9);
+        robot.setPose(new Pose2d(0.5, 0, new Rotation2d()));
+        runExecute(command, robot);
+        assertEquals(90, logs.get("FollowPath/targetRotationDeg"), 1e-9);
+        robot.setPose(new Pose2d(0.55, 0, new Rotation2d()));
+        runExecute(command, robot);
+        assertEquals(105, logs.get("FollowPath/targetRotationDeg"), 1e-9);
+    }
+
+    @Test
+    void interpolatedHeadingTakesTheShortArcAcrossAngleWrap() {
+        MutableRobot robot = new MutableRobot(new Pose2d(0, 0, Rotation2d.fromDegrees(170)));
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(
+            new Path.Waypoint(robot.getPose()),
+            new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(-170)))
+        );
+        FollowPath command = createCommand(path, robot);
+        command.initialize();
+        robot.setPose(new Pose2d(1, 0, Rotation2d.fromDegrees(170)));
+        runExecute(command, robot);
+        assertEquals(180, Math.abs(logs.get("FollowPath/targetRotationDeg")), 1e-9);
+        assertTrue(logs.get("FollowPath/rotationPidOutputRadPerSec") > 0);
+        robot.setPose(new Pose2d(1.5, 0, Rotation2d.fromDegrees(180)));
+        runExecute(command, robot);
+        assertEquals(-175, logs.get("FollowPath/targetRotationDeg"), 1e-9);
+    }
+
+    @Test
+    void finalHeadingIsRequestedInsideTranslationToleranceWithoutAddingAVelocityCheck() {
+        MutableRobot robot = new MutableRobot(new Pose2d());
+        FollowPath.setTimestampSupplier(robot::getTimestampSeconds);
+        Map<String, Double> logs = new HashMap<>();
+        FollowPath.setDoubleLoggingConsumer(value -> logs.put(value.getFirst(), value.getSecond()));
+        Path path = new Path(
+            new Path.Waypoint(new Pose2d()),
+            new Path.Waypoint(new Pose2d(2, 0, Rotation2d.fromDegrees(90)))
+        );
+        FollowPath command = createCommand(path, robot);
+        command.initialize();
+        robot.setPose(new Pose2d(1.96, 0, Rotation2d.fromDegrees(85)));
+        runExecute(command, robot);
+        assertEquals(90, logs.get("FollowPath/targetRotationDeg"), 1e-9);
+        assertFalse(command.isFinished());
+        robot.setPose(new Pose2d(1.96, 0, Rotation2d.fromDegrees(90)));
+        runExecute(command, robot);
+        assertFalse(areSpeedsNearZero(robot.getRobotRelativeSpeeds(), 1e-9));
+        assertTrue(command.isFinished(), "Completion still depends on pose tolerances, not speed");
+        command.end(false);
+        assertTrue(areSpeedsNearZero(robot.getRobotRelativeSpeeds(), 1e-9));
     }
 
     @Test
