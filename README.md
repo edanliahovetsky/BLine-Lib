@@ -6,10 +6,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-0f766e" alt="BSD 3-Clause License"></a>
 </p>
 
-**BLine** is a rapid point-to-point autonomous path planning and tracking
-library for FIRST Robotics Competition. It is made by students for students and
-built around practical tuning, quick iteration, and rapid empirical testing in
-time-constrained build-season environments.
+**BLine** is open-source autonomy for FIRST Robotics Competition: a rapid
+point-to-point path planning and tracking library. It enables teams to rapidly build reliable autonomous routines with limited
+robot time, raising the performance floor and ceiling for new and veteran
+teams alike. Made by students, for students.
 
 **Quick links**
 
