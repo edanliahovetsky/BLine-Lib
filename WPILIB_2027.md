@@ -46,9 +46,9 @@ BLine's published dependencies do not install either framework for you.
 Both constructors require, in order:
 
 ```java
-import frc.robot.lib.BLine.commands.FollowPath;
-import frc.robot.lib.BLine.following.DriveType;
-import frc.robot.lib.BLine.path.Path;
+import bline.commands.FollowPath;
+import bline.following.DriveType;
+import bline.path.Path;
 
 var paths = new FollowPath.Builder(
     DriveType.TANK, drive,
@@ -94,6 +94,19 @@ Scheduler.getDefault().schedule(auto);
 V2 retains `BLineCommandsV2.sequence(...)` and its other proxy composition
 helpers. Use `org.wpilib.command3` or `org.wpilib.command2` imports for the
 selected framework, and `org.wpilib` imports for WPILib 2027 types.
+
+### OpModeRobot projects
+
+At startup, `OpModeRobot` finds annotated op modes by loading every classpath
+class whose name starts with the robot class's package, such as `frc.robot`.
+Releases through 2027.0.0-beta.2 placed BLine under `frc.robot.lib.BLine`, so
+that scan also loaded the command adapter for the framework your project does
+not use. That adapter cannot load, and the robot crashed with
+`NoClassDefFoundError` for `org/wpilib/command3/Command` (Commands v2 projects)
+or `org/wpilib/command2/Subsystem` (Commands v3 projects). BLine now lives under
+`bline`, outside the scan. After updating, remove any `runtimeOnly` dependency
+on the other command framework that was added to work around the crash.
+TimedRobot projects were not affected.
 
 ## Execution options and mutable paths
 
@@ -302,7 +315,7 @@ setup and lifecycle wiring.
 
 The beta groups public types by responsibility:
 
-| Package under `frc.robot.lib.BLine` | Public application API |
+| Package under `bline` | Public application API |
 | --- | --- |
 | `path` | `Path` and its nested elements/constraints, `ProjectDefaults`, `HandoffMode`, `DriveDirection` |
 | `commands` | `FollowPath`, `FollowPathV2`, `BLineCommandsV2` |
@@ -313,8 +326,16 @@ Update older flat-package imports to these packages. Builder arguments and fluen
 execution options retain the same signatures. Both command adapters still share
 one control implementation; swerve and mecanum share holonomic control.
 
+**Root package change.** BLine 2027.0.0-beta.2 and earlier, including the stable
+2026 release, use the root package `frc.robot.lib.BLine`. This beta line now uses
+`bline`. From an earlier beta, replace `frc.robot.lib.BLine.` with `bline.` in
+your imports, for example `import bline.commands.FollowPathV2;`; class names,
+subpackages and signatures are unchanged. From 2026, use the table above. The
+old root was inside the template robot package, which
+[OpModeRobot scans](#opmoderobot-projects) at startup.
+
 The former `ChassisRateLimiter` utility is now
-`frc.robot.lib.BLine.following.HolonomicRateLimiter`. Its `limit(...)` arguments
+`bline.following.HolonomicRateLimiter`. Its `limit(...)` arguments
 and limiting behavior are unchanged.
 
 `PreparedPath` and `FollowerSession` are internal bridges between packages, not

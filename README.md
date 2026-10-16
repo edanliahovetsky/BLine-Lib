@@ -49,14 +49,21 @@ migrating to 2027. BLine includes both adapters, but your project must supply
 the matching WPILib command framework. See the [2027 guide](WPILIB_2027.md)
 before updating older BLine code.
 
+> [!NOTE]
+> BLine's root package is now `bline`, for example `bline.commands.FollowPath`.
+> 2027.0.0-beta.2 and earlier used `frc.robot.lib.BLine`. That sat inside the
+> robot package WPILib's `OpModeRobot` scans at startup, which crashed OpModeRobot
+> projects. See the [import migration](WPILIB_2027.md#imports-and-internal-structure)
+> and [OpModeRobot notes](WPILIB_2027.md#opmoderobot-projects).
+
 WPILib 2026 projects should continue using the [stable installation](https://github.com/edanliahovetsky/BLine-Lib/tree/main#installation).
 
 ## Quick Start
 
 ```java
-import frc.robot.lib.BLine.commands.FollowPath;
-import frc.robot.lib.BLine.following.DriveType;
-import frc.robot.lib.BLine.path.Path;
+import bline.commands.FollowPath;
+import bline.following.DriveType;
+import bline.path.Path;
 import org.wpilib.math.controller.PIDController;
 
 // Commands v3: drive implements Mechanism. Use FollowPathV2.Builder and
@@ -130,7 +137,7 @@ Elastic or Glass) needs no simulation. `BLineField` provides small helpers for
 drawing a BLine path directly as a connected field object:
 
 ```java
-import frc.robot.lib.BLine.field.BLineField;
+import bline.field.BLineField;
 import org.wpilib.smartdashboard.Field2d;
 
 Field2d field = new Field2d();

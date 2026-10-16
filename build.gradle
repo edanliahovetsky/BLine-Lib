@@ -146,6 +146,8 @@ test {
     useJUnitPlatform()
     dependsOn tasks.named('extractWpilibTestNatives')
     dependsOn tasks.named('generatePomFileForMavenPublication')
+    dependsOn tasks.named('jar')
+    systemProperty 'bline.jar', jar.archiveFile.get().asFile.absolutePath
     jvmArgs '--enable-native-access=ALL-UNNAMED',
         '--add-opens=java.base/jdk.internal.vm=ALL-UNNAMED',
         '--add-opens=java.base/java.lang=ALL-UNNAMED'
