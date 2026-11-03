@@ -301,7 +301,9 @@ public class FollowPath extends Command {
     }
     
     
-    private final Path path;
+    // Captured at build() and never modified; each run follows a fresh copy in path.
+    private final Path sourcePath;
+    private Path path;
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> robotRelativeSpeedsSupplier;
     private final Consumer<ChassisSpeeds> robotRelativeSpeedsConsumer;
@@ -522,7 +524,11 @@ public class FollowPath extends Command {
          * <p>The built command will use all the configuration from this builder. Each call
          * to build() creates an independent command that can be scheduled, using the builder's
          * current optional settings at the time of the call.
-         * 
+         *
+         * <p>The command copies {@code path} here, so later edits to it do not affect the command.
+         * Each time the command is scheduled, flip and mirror are applied to a fresh copy of that
+         * path, so the same command can be run again with a different alliance or mirror setting.
+         *
          * @param path The path to follow
          * @return A new FollowPath command configured for the given path
          * @throws IllegalArgumentException if any required controllers are null
@@ -576,7 +582,8 @@ public class FollowPath extends Command {
             throw new IllegalArgumentException("Controllers must be provided and must not be null");
         }
 
-        this.path = path.copy();
+        this.sourcePath = path.copy();
+        this.path = sourcePath.copy();
         this.poseSupplier = poseSupplier;
         this.robotRelativeSpeedsSupplier = robotRelativeSpeedsSupplier;
         this.robotRelativeSpeedsConsumer = robotRelativeSpeedsConsumer;
@@ -599,6 +606,9 @@ public class FollowPath extends Command {
         if (translationController == null || rotationController == null) {
             throw new IllegalArgumentException("Translation and rotation controllers must be provided and must not be null");
         }
+
+        // Start from the build-time path so flip and mirror from earlier runs don't carry over.
+        path = sourcePath.copy();
 
         if (!path.isValid()) {
             logger.log(java.util.logging.Level.WARNING, "FollowPath: Path invalid - skipping initialization");
