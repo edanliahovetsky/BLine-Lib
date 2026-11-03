@@ -337,7 +337,11 @@ loadScripts(document, 'script');</script>
  
  <p>The built command will use all the configuration from this builder. Each call
  to build() creates an independent command that can be scheduled, using the builder's
- current optional settings at the time of the call.</div>
+ current optional settings at the time of the call.
+
+ <p>The command copies <code>path</code> here, so later edits to it do not affect the command.
+ Each time the command is scheduled, flip and mirror are applied to a fresh copy of that
+ path, so the same command can be run again with a different alliance or mirror setting.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>path</code> - The path to follow</dd>
