@@ -182,6 +182,51 @@ class BehavioralCompatibilityTest {
     }
 
     @Test
+    void reusedFollowerAppliesCurrentAllianceOnEachRun() throws URISyntaxException {
+        MutableRobot robot = new MutableRobot();
+        Command command = builder(robot)
+            .withDefaultShouldFlip()
+            .withPoseReset(robot::setPose)
+            .build(loadRepresentativePath())
+            .ignoringDisable(true);
+
+        DriverStationSim.setAllianceStationId(AllianceStationID.Red1);
+        DriverStationSim.notifyNewData();
+        scheduleAndRunOnce(command);
+        assertPose(robot.pose, new Pose2d(15.29, 5.57, Rotation2d.fromDegrees(-150.0)));
+        scheduler.cancel(command);
+
+        DriverStationSim.setAllianceStationId(AllianceStationID.Blue1);
+        DriverStationSim.notifyNewData();
+        scheduleAndRunOnce(command);
+        assertPose(robot.pose, new Pose2d(1.25, 2.50, Rotation2d.fromDegrees(30.0)));
+    }
+
+    @Test
+    void reusedFollowerMirrorsBuildTimePathOnEachRun() throws URISyntaxException {
+        MutableRobot robot = new MutableRobot();
+        AtomicBoolean shouldMirror = new AtomicBoolean(true);
+        Command command = builder(robot)
+            .withShouldMirror(shouldMirror::get)
+            .withPoseReset(robot::setPose)
+            .build(loadRepresentativePath())
+            .ignoringDisable(true);
+        Pose2d mirroredStart = new Pose2d(1.25, 5.57, Rotation2d.fromDegrees(-30.0));
+
+        scheduleAndRunOnce(command);
+        assertPose(robot.pose, mirroredStart);
+        scheduler.cancel(command);
+
+        scheduleAndRunOnce(command);
+        assertPose(robot.pose, mirroredStart);
+        scheduler.cancel(command);
+
+        shouldMirror.set(false);
+        scheduleAndRunOnce(command);
+        assertPose(robot.pose, new Pose2d(1.25, 2.50, Rotation2d.fromDegrees(30.0)));
+    }
+
+    @Test
     void followerObservesMutableRobotPoseThroughRealCommandScheduler() throws URISyntaxException {
         MutableRobot robot = new MutableRobot();
         FollowPath follower = builder(robot)
