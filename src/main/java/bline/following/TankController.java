@@ -27,12 +27,6 @@ final class TankController {
         double magnitude = Math.hypot(fieldVx, fieldVy);
         double heading = magnitude > 1e-9 ? Math.atan2(fieldVy, fieldVx)
             + (direction == DriveDirection.BACKWARD ? Math.PI : 0) : pose.getRotation().getRadians();
-        // A tank can only travel the way it faces. Scale the speed request by the cosine of the heading
-        // error so the robot slows while it turns toward the requested direction, and pivots in place
-        // when it is more than 90 degrees off, instead of carrying full speed through a turn it cannot
-        // make. Without this, a robot whose heading lags the request (for example when cross-track
-        // correction swings the request sideways near the end of a path) keeps moving forward while it
-        // turns, and can circle the end point without ever arriving.
         double alignment = Math.max(0, Math.cos(MathUtil.angleModulus(heading - pose.getRotation().getRadians())));
         return new Target(magnitude * alignment * (direction == DriveDirection.BACKWARD ? -1 : 1), heading, magnitude > 1e-9, false);
     }
