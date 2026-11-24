@@ -91,25 +91,34 @@ class ExecutionContractTest {
                 ? run(builderV3.build(path).withTankDriveDirection(DriveDirection.FORWARD))
                 : run(builderV2.build(path).withTankDriveDirection(DriveDirection.FORWARD));
             Run laterBuild = commandsV3 ? run(builderV3.build(path)) : run(builderV2.build(path));
+            // Tank forward speed is scaled by heading alignment, so each run starts already facing its
+            // travel direction: +x for Forward, -x (back toward the target) for Backward.
+            Pose2d facingTarget = new Pose2d();
+            Pose2d backToTarget = new Pose2d(0, 0, new Rotation2d(Math.PI));
             assertEquals(DriveDirection.FORWARD, path.getTankDriveDirection());
+            robot.pose = facingTarget;
             inherited.start.run(); inherited.step.run();
             assertTrue(robot.output.vx > 0, "Missing direction defaults to Forward");
             path.setTankDriveDirection(DriveDirection.BACKWARD);
             inherited.step.run();
             assertTrue(robot.output.vx > 0, "Changing the source cannot alter an active execution");
             inherited.stop.run();
+            robot.pose = backToTarget;
             inherited.start.run(); inherited.step.run();
             assertTrue(robot.output.vx < 0, "The same command picks up source changes on its next run");
             inherited.stop.run();
+            robot.pose = facingTarget;
             forward.start.run(); forward.step.run();
             assertTrue(robot.output.vx > 0, "An explicit Forward overrides a saved Backward");
             forward.stop.run();
             assertEquals(DriveDirection.BACKWARD, path.getTankDriveDirection());
             path.setTankDriveDirection(DriveDirection.FORWARD);
+            robot.pose = backToTarget;
             backward.start.run(); backward.step.run();
             assertTrue(robot.output.vx < 0, "An explicit Backward overrides a saved Forward");
             backward.stop.run();
             assertEquals(DriveDirection.FORWARD, path.getTankDriveDirection());
+            robot.pose = facingTarget;
             laterBuild.start.run(); laterBuild.step.run();
             assertTrue(robot.output.vx > 0, "Overrides must not reconfigure the builder or another command");
             laterBuild.stop.run();
