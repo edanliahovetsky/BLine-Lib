@@ -224,6 +224,11 @@ Tank ignores intermediate authored rotations. At position tolerance it switches
 directly to the last waypoint's body heading, with zero forward speed. A rolling tank exit skips that
 stationary alignment. Swerve/mecanum can rotate while translating.
 
+A tank can only travel the way it faces, so its forward speed request is scaled by the cosine of the
+heading error (never below zero). The robot slows while it turns toward the requested direction and
+pivots in place when it is more than 90 degrees off, rather than carrying full speed through a turn it
+cannot make.
+
 Tank limiting selects forward speed and turn rate jointly by the approximately closest next
 velocity vector, subject to angular slew and the combined forward/cornering
 acceleration limit. It does not prioritize turn rate or automatically lower the

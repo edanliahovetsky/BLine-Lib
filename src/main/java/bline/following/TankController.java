@@ -27,7 +27,8 @@ final class TankController {
         double magnitude = Math.hypot(fieldVx, fieldVy);
         double heading = magnitude > 1e-9 ? Math.atan2(fieldVy, fieldVx)
             + (direction == DriveDirection.BACKWARD ? Math.PI : 0) : pose.getRotation().getRadians();
-        return new Target(magnitude * (direction == DriveDirection.BACKWARD ? -1 : 1), heading, magnitude > 1e-9, false);
+        double alignment = Math.max(0, Math.cos(MathUtil.angleModulus(heading - pose.getRotation().getRadians())));
+        return new Target(magnitude * alignment * (direction == DriveDirection.BACKWARD ? -1 : 1), heading, magnitude > 1e-9, false);
     }
 
     TankRateLimiter.Result limit(Target target, double omega, TankRateLimiter.Limits limits,

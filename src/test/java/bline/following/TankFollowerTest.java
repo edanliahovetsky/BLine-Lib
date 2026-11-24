@@ -42,6 +42,57 @@ class TankFollowerTest {
         }
     }
 
+    @Test void forwardSpeedRequestIsScaledByTheCosineOfTheHeadingError() {
+        TankController controller = new TankController(new ChassisVelocities());
+        var none = java.util.OptionalDouble.empty();
+        Pose2d facingForward = new Pose2d(0, 0, new Rotation2d());
+
+        var aligned = controller.target(2, 0, facingForward, false, none, 0.05, DriveDirection.FORWARD);
+        assertEquals(2, aligned.forward(), 1e-9);
+        assertEquals(0, aligned.heading(), 1e-9);
+
+        var sixtyOff = controller.target(2 * Math.cos(Math.PI / 3), 2 * Math.sin(Math.PI / 3), facingForward,
+            false, none, 0.05, DriveDirection.FORWARD);
+        assertEquals(1, sixtyOff.forward(), 1e-9, "2 m/s requested 60 degrees off the heading is 2 cos(60) = 1 m/s");
+        assertEquals(Math.PI / 3, sixtyOff.heading(), 1e-9);
+        assertTrue(sixtyOff.steer());
+
+        var perpendicular = controller.target(0, 2, facingForward, false, none, 0.05, DriveDirection.FORWARD);
+        assertEquals(0, perpendicular.forward(), 1e-9, "A request 90 degrees off pivots in place");
+        assertTrue(perpendicular.steer());
+
+        var behind = controller.target(-2, 0, facingForward, false, none, 0.05, DriveDirection.FORWARD);
+        assertEquals(0, behind.forward(), 0, "A request behind the robot never drives it backward in FORWARD travel");
+        assertEquals(Math.PI, Math.abs(behind.heading()), 1e-9);
+        assertTrue(behind.steer());
+
+        Pose2d facingBackward = new Pose2d(0, 0, new Rotation2d(Math.PI));
+        var backwardAligned = controller.target(2, 0, facingBackward, false, none, 0.05, DriveDirection.BACKWARD);
+        assertEquals(-2, backwardAligned.forward(), 1e-9);
+        var backwardSixtyOff = controller.target(2 * Math.cos(Math.PI / 3), 2 * Math.sin(Math.PI / 3), facingBackward,
+            false, none, 0.05, DriveDirection.BACKWARD);
+        assertEquals(-1, backwardSixtyOff.forward(), 1e-9, "BACKWARD travel scales the same way, with the sign reversed");
+    }
+
+    @Test void doesNotDriveForwardWhileFacingMoreThanNinetyDegreesFromTheRequestedDirection() {
+        Rig rig = new Rig(new Pose2d(0, 0, new Rotation2d(Math.PI)));
+        Follower follower = rig.follower(new Path(constraints(), new Path.Waypoint(new Pose2d(3, 0, Rotation2d.fromDegrees(0)))));
+        follower.initialize();
+        boolean sawTurnInPlace = false;
+        for (int i = 0; i < 3000 && !follower.isFinished(); i++) {
+            double errorBefore = Math.abs(org.wpilib.math.util.MathUtil.angleModulus(0 - rig.pose.getRotation().getRadians()));
+            rig.step(follower);
+            if (errorBefore > Math.PI / 2 + 1e-3) {
+                sawTurnInPlace = true;
+                assertTrue(rig.output.vx <= 1e-6, "Must not drive forward while facing away from the path");
+            }
+        }
+        assertTrue(sawTurnInPlace, "The robot starts facing away from the path");
+        assertTrue(follower.isFinished(), "The path must still complete");
+        assertTrue(rig.pose.getTranslation().getDistance(new Translation2d(3, 0)) <= 0.08);
+        follower.end(false);
+    }
+
     @Test void intermediateHeadingsDoNotSteerTankAndRollingExitDoesNotStopForFinalHeading() {
         Rig rig = new Rig(new Pose2d());
         var constraints = constraints().setMinVelocityMetersPerSec(1);
@@ -75,6 +126,9 @@ class TankFollowerTest {
         follower.initialize();
         for (int i = 0; i < 3000 && !follower.isFinished(); i++) {
             ChassisVelocities previous = rig.output;
+            // Arrival is a positional handoff: translation stops immediately (see TankController.limit),
+            // so the joint acceleration bound below applies to the approach, not to the arrival step.
+            boolean arriving = rig.pose.getTranslation().getDistance(end.getTranslation()) <= 0.08;
             rig.step(follower);
             assertTrue(rig.output.vx >= -1e-8);
             assertTrue(rig.output.vx <= 3.5 + 1e-8);
@@ -82,17 +136,17 @@ class TankFollowerTest {
             assertTrue(Math.abs(rig.output.omega) <= 2.5 + 1e-8);
             assertTrue(Math.abs(rig.output.omega - previous.omega) <= 4 * 0.02 + 1e-8);
             double a = (rig.output.vx - previous.vx) / 0.02;
-            for (int sample = 0; sample <= 10; sample++) {
+            for (int sample = 0; !arriving && sample <= 10; sample++) {
                 double f = sample / 10.0;
                 double v = previous.vx + (rig.output.vx - previous.vx) * f;
                 double w = previous.omega + (rig.output.omega - previous.omega) * f;
                 assertTrue(Math.hypot(a, v * w) <= 2 + 1e-7);
             }
         }
-        // The local joint objective can remain in a saturated turn. Completion
-        // is not promised for these bends; the straight/rolling tests above
-        // exercise successful completion. Do not add hidden steering priority
-        // just to make this integration case finish.
+        // The local joint objective can remain in a saturated turn, so completion is not promised for
+        // every bend. Tank forward speed is scaled by the heading error, which lets most of these
+        // paths arrive, but nothing here relies on that: do not add hidden steering priority just to
+        // make this integration case finish.
         if (follower.isFinished()) {
             assertTrue(rig.pose.getTranslation().getDistance(end.getTranslation()) <= 0.08);
         }
